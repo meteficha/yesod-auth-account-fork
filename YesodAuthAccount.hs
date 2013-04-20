@@ -17,13 +17,13 @@
 -- can embed into your own pages, customizing the account process.  The minimal requirements
 -- to use this module are:
 --
--- * Create a user datatype and make it an instance of 'UserCredentials'.  If you are using
---   persistent, you can use a datatype created by persistent in which case you must should also
---   make the type an instance of 'PersistUserCredentials'.  Note that using persistent is not
---   required.
+-- * If you are not using persistent or just want more control over the user data, you can use
+--   any datatype for user information and make it an instance of 'UserCredentials'.  You must
+--   also create an instance of 'AccountDB'.
 --
--- * Create an instance of 'AccountDB'.  Persistent users can skip this step, as
---   'PersistAccountDB' is already an instance of this class.
+-- * You may use a user datatype created by persistent, in which case you can make the datatype
+--   an instance of 'PersistUserCredentials' instead of 'UserCredentials'.  In this case, 
+--   'AccountPersistDB' from this module already implements the 'AccountDB' interface for you.
 --
 -- * Make your master site an instance of 'AccountSendEmail'.  By default, this class
 --   just logs a message so during development this class requires no implementation.
@@ -70,11 +70,11 @@ module YesodAuthAccount(
 
     -- * Database and Email
     , UserCredentials(..)
+    , PersistUserCredentials(..)
     , AccountDB(..)
     , AccountSendEmail(..)
 
     -- * Persistent
-    , PersistUserCredentials(..)
     , AccountPersistDB
     , runAccountPersistDB
 
@@ -130,16 +130,10 @@ type Username = T.Text
 -- >    deriving Show
 -- >|]
 -- >
--- >instance UserCredentials User where
--- >    username = userUsername
--- >    userPasswordHash = userPassword
--- >    userEmail = userEmailAddress
--- >    userEmailVerified = userVerified
--- >    userEmailVerifyKey = userVerifyKey
--- >    userResetPwdKey = userResetPasswordKey
--- >
 -- >instance PersistUserCredentials User where
+-- >    userUsernameF = UserUsername
 -- >    userPasswordHashF = UserPassword
+-- >    userEmailF = UserEmailAddress
 -- >    userEmailVerifiedF = UserVerified
 -- >    userEmailVerifyKeyF = UserVerifyKey
 -- >    userResetPwdKeyF = UserResetPasswordKey
@@ -640,7 +634,10 @@ postSetPasswordR = do
 
 ---------------------------------------------------------------------------------------------------
 
--- | Interface for the data type which stores the user info.
+-- | Interface for the data type which stores the user info when not using persistent.
+--
+--   You must make a data type that is either an instance of this class or of
+--   'PersistUserCredentials', depending on if you are using persistent or not.
 --
 --   Users are uniquely identified by their username, and for each user we must store the email,
 --   the verify status, a hashed user password, and a reset password key.  The format for the
@@ -654,9 +651,34 @@ class UserCredentials u where
     userEmailVerifyKey :: u -> T.Text     -- ^ the verification key which is sent in an email.
     userResetPwdKey    :: u -> T.Text     -- ^ the reset password key which is sent in an email.
 
+-- | Interface for the data type which stores the user info when using persistent.
+--
+--   You must make a data type that is either an instance of this class or of
+--   'UserCredentials', depending on if you are using persistent or not.
+class PersistUserCredentials u where
+    userUsernameF       :: P.EntityField u Username
+    userPasswordHashF   :: P.EntityField u B.ByteString
+    userEmailF          :: P.EntityField u T.Text
+    userEmailVerifiedF  :: P.EntityField u Bool
+    userEmailVerifyKeyF :: P.EntityField u T.Text
+    userResetPwdKeyF    :: P.EntityField u T.Text
+#if 1
+    uniqueUsername      :: T.Text -> P.Unique u
+#else
+    uniqueUsername      :: T.Text -> P.Unique u (P.PersistEntityBackend u)
+#endif
+
+    -- | Creates a new user for use during 'addNewUser'.  The starting reset password
+    -- key should be the empty string.
+    userCreate :: Username
+               -> T.Text       -- ^ unverified email
+               -> T.Text       -- ^ email verification key
+               -> B.ByteString -- ^ hashed and salted password
+               -> u
+
 -- | These are the database operations to load and update user data.
 --
--- Persistent users can use 'PersistAccountDB' and don't need to create their own instance.
+-- Persistent users can use 'AccountPersistDB' and don't need to create their own instance.
 -- If you are not using persistent or are using persistent but want to customize the database
 -- activity, you must manually create an instance.  The kind of @b@ is @* -> * -> *@.  The first
 -- type argument to @b@ is a subsite, and @b sub@ should be a monad which embeds
@@ -865,50 +887,25 @@ newVerifyKey = do
 
 ---------------------------------------------------------------------------------------------------
 
--- | If you are using persistent, you can make your persistent user datatype an
--- instance of this class to take advantage of the automatic implementation of
--- 'AccountDB' on 'PersistAccountDB'.
---
--- NOTE: I would like to remove the requirement to implement 'UserCredentials' and instead
--- have this class contain the entity fields for all the various fields and then automatically
--- create the 'UserCredentials' instance.  But this would require a function
---
--- > getField :: PersistEntity e => EntityField e t -> e -> t
---
--- which seems like it should exist but I can't find it.  All I can come up with is finding the index
--- of the field from 'P.entityDef' and looking in 'P.toPersistFields', but that still only gets a 'P.PersistValue'
--- with no good way to turn it into type @t@.
-class UserCredentials u => PersistUserCredentials u where
-    userPasswordHashF   :: P.EntityField u B.ByteString
-    userEmailVerifiedF  :: P.EntityField u Bool
-    userEmailVerifyKeyF :: P.EntityField u T.Text
-    userResetPwdKeyF    :: P.EntityField u T.Text
-#if 0
-    uniqueUsername      :: T.Text -> P.Unique u
-#else
-    uniqueUsername      :: T.Text -> P.Unique u (P.PersistEntityBackend u)
-#endif
 
-    -- | Creates a new user for use during 'addNewUser'.  The starting reset password
-    -- key should be the empty string.
-    userCreate :: Username
-               -> T.Text       -- ^ unverified email
-               -> T.Text       -- ^ email verification key
-               -> B.ByteString -- ^ hashed and salted password
-               -> u
 
-instance UserCredentials u => UserCredentials (P.Entity u) where
-    username = username . P.entityVal
-    userPasswordHash = userPasswordHash . P.entityVal
-    userEmail = userEmail . P.entityVal
-    userEmailVerified = userEmailVerified . P.entityVal
-    userEmailVerifyKey = userEmailVerifyKey . P.entityVal
-    userResetPwdKey = userResetPwdKey . P.entityVal
+-- | Lens getter
+infixl 8 ^.
+(^.) :: a -> ((b -> Const b b') -> a -> Const b a') -> b
+x ^. l = getConst $ l Const x
+
+instance (P.PersistEntity u, PersistUserCredentials u) => UserCredentials (P.Entity u) where
+    username u = u ^. fieldLens userUsernameF
+    userPasswordHash u = u ^. fieldLens userPasswordHashF
+    userEmail u = u ^. fieldLens userEmailF
+    userEmailVerified u = u ^. fieldLens userEmailVerifiedF
+    userEmailVerifyKey u = u ^. fieldLens userEmailVerifyKeyF
+    userResetPwdKey u = u ^. fieldLens userResetPwdKeyF
 
 -- | Internal state for the AccountPersistDB monad.
 data PersistFuncs master user sub = PersistFuncs {
       pGet :: T.Text -> GHandler sub master (Maybe (P.Entity user))
-    , pInsert :: user -> GHandler sub master (Either T.Text (P.Entity user))
+    , pInsert :: Username -> user -> GHandler sub master (Either T.Text (P.Entity user))
     , pUpdate :: P.Entity user -> [P.Update user] -> GHandler sub master ()
 }
 
@@ -925,7 +922,7 @@ instance (Yesod master, PersistUserCredentials user) => AccountDB (AccountPersis
 
     addNewUser name email key pwd = AccountPersistDB $ do
         f <- ask
-        lift $ pInsert f $ userCreate name email key pwd
+        lift $ pInsert f name $ userCreate name email key pwd
 
     verifyAccount u = AccountPersistDB $ do
         f <- ask
@@ -951,7 +948,7 @@ runAccountPersistDB :: ( Yesod master
                        , P.PersistEntity user
                        , PersistUserCredentials user
                        , b ~ YesodPersistBackend master
-#if 0
+#if 1
                        , P.PersistMonadBackend (b (GHandler sub master)) ~ P.PersistEntityBackend user
                        , P.PersistUnique (b (GHandler sub master))
                        , P.PersistQuery (b (GHandler sub master))
@@ -966,10 +963,10 @@ runAccountPersistDB :: ( Yesod master
 runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs
     where funcs = PersistFuncs {
                       pGet = runDB . P.getBy . uniqueUsername
-                    , pInsert = \u -> do mentity <- runDB $ P.insertBy u
-                                         mr <- getMessageRender
-                                         case mentity of
-                                            Left _ -> return $ Left $ mr $ MsgUsernameExists $ username u
-                                            Right k -> return $ Right $ P.Entity k u
+                    , pInsert = \name u -> do mentity <- runDB $ P.insertBy u
+                                              mr <- getMessageRender
+                                              case mentity of
+                                                 Left _ -> return $ Left $ mr $ MsgUsernameExists name
+                                                 Right k -> return $ Right $ P.Entity k u
                     , pUpdate = \(P.Entity key _) u -> runDB $ P.update key u
                     }
