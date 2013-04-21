@@ -1,3 +1,5 @@
 syntax:glob
 dist/
 .*.swp
+client_session_key.aes
+test.db3

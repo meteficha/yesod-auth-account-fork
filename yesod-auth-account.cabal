@@ -39,3 +39,18 @@ library
                  , yesod-form        >= 1.2        && < 1.3
                  , yesod-persistent  >= 1.1
 
+test-suite test
+    type:              exitcode-stdio-1.0
+    main-is:           main.hs
+    hs-source-dirs:    tests
+    ghc-options:       -Wall
+
+    build-depends: base
+                 , bytestring
+                 , monad-logger >= 0.3
+                 , persistent-sqlite
+                 , text
+                 , yesod
+                 , yesod-test
+                 , yesod-auth
+                 , yesod-auth-account
