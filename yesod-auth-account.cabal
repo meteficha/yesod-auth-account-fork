@@ -14,11 +14,11 @@ description:       An auth plugin for accounts. Each account consists of a usern
                    email, and password.  The plugin provides new account, email verification,
                    and password reset pages that can be customized to enhance the user experience.
 
+extra-source-files: example.hs
+
 source-repository head
     type: mercurial
     location: https://bitbucket.org/wuzzeb/yesod-auth-account
-
-extra-source-files: example.hs
 
 library
     hs-source-dirs:  .
