@@ -113,10 +113,11 @@ type Username = T.Text
 -- >
 -- >import Data.Text (Text)
 -- >import Data.ByteString (ByteString)
+-- >import Database.Persist.Sqlite
+-- >import Control.Monad.Logger (runStderrLoggingT)
 -- >import Yesod
 -- >import Yesod.Auth
 -- >import YesodAuthAccount
--- >import Database.Persist.Sqlite
 -- >
 -- >share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistUpperCase|
 -- >User
@@ -187,7 +188,7 @@ type Username = T.Text
 -- >
 -- >main :: IO ()
 -- >main = withSqlitePool "test.db3" 10 $ \pool -> do
--- >    runSqlPool (runMigration migrateAll) pool
+-- >    runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
 -- >    warpDebug 3000 $ MyApp pool
 --
 accountPlugin :: YesodAuthAccount db master => AuthPlugin master
