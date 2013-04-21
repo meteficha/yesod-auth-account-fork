@@ -48,7 +48,9 @@ test-suite test
     build-depends: base
                  , bytestring
                  , monad-logger >= 0.3
+                 , mtl
                  , persistent-sqlite
+                 , resourcet
                  , text
                  , yesod
                  , yesod-test

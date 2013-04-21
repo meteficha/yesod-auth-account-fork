@@ -8,6 +8,8 @@ import Data.Text (Text)
 import Data.ByteString (ByteString)
 import Database.Persist.Sqlite
 import Data.IORef
+import Control.Monad.Trans (MonadIO)
+import System.IO.Unsafe (unsafePerformIO)
 import Yesod
 import Yesod.Auth
 import Yesod.Auth.Account
@@ -35,20 +37,21 @@ instance PersistUserCredentials User where
 
     userCreate name email key pwd = User name pwd email False key ""
 
-data MyApp = MyApp { connPool :: ConnectionPool
-                   , lastVerifyEmailR :: IORef (Username, Text, Text) -- ^ (username, email, verify url)
-                   , lastNewPwdEmailR :: IORef (Username, Text, Text) -- ^ (username, email, verify url)
-                   }
+data MyApp = MyApp ConnectionPool
 
-lastVerifyEmail :: GHandler s MyApp (Username, Text, Text)
-lastVerifyEmail = do
-    app <- getYesod
-    liftIO $ readIORef $ lastVerifyEmailR app
+lastVerifyEmailR :: IORef (Username, Text, Text) -- ^ (username, email, verify url)
+{-# NOINLINE lastVerifyEmailR #-}
+lastVerifyEmailR = unsafePerformIO (newIORef ("", "", ""))
 
-lastNewPwdEmail :: GHandler s MyApp (Username, Text, Text)
-lastNewPwdEmail = do
-    app <- getYesod
-    liftIO $ readIORef $ lastNewPwdEmailR app
+lastNewPwdEmailR :: IORef (Username, Text, Text) -- ^ (username, email, verify url)
+{-# NOINLINE lastNewPwdEmailR #-}
+lastNewPwdEmailR = unsafePerformIO (newIORef ("", "", ""))
+
+lastVerifyEmail :: MonadIO m => m (Username, Text, Text)
+lastVerifyEmail = liftIO $ readIORef lastVerifyEmailR
+
+lastNewPwdEmail :: MonadIO m => m (Username, Text, Text)
+lastNewPwdEmail = liftIO $ readIORef lastNewPwdEmailR
 
 mkYesod "MyApp" [parseRoutes|
 / HomeR GET
@@ -63,8 +66,8 @@ instance RenderMessage MyApp FormMessage where
 instance YesodPersist MyApp where
     type YesodPersistBackend MyApp = SqlPersist
     runDB action = do
-        app <- getYesod
-        runSqlPool action $ connPool app
+        MyApp pool <- getYesod
+        runSqlPool action pool
 
 instance YesodAuth MyApp where
     type AuthId MyApp = Username
@@ -76,13 +79,11 @@ instance YesodAuth MyApp where
     onLogin = return ()
 
 instance AccountSendEmail MyApp where
-    sendVerifyEmail name email url = do
-        app <- getYesod
-        liftIO $ writeIORef (lastVerifyEmailR app) (name, email, url)
+    sendVerifyEmail name email url =
+        liftIO $ writeIORef lastVerifyEmailR (name, email, url)
 
-    sendNewPasswordEmail name email url = do
-        app <- getYesod
-        liftIO $ writeIORef (lastNewPwdEmailR app) (name, email, url)
+    sendNewPasswordEmail name email url =
+        liftIO $ writeIORef lastNewPwdEmailR (name, email, url)
 
 instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
     runAccountDB = runAccountPersistDB
