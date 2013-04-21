@@ -34,7 +34,7 @@
 --   module.
 --
 -- * Include 'accountPlugin' in the list of plugins in your instance of 'YesodAuth'.
-module YesodAuthAccount(
+module Yesod.Auth.Account(
     -- * Plugin
       Username
     , newAccountR
@@ -117,7 +117,7 @@ type Username = T.Text
 -- >import Control.Monad.Logger (runStderrLoggingT)
 -- >import Yesod
 -- >import Yesod.Auth
--- >import YesodAuthAccount
+-- >import Yesod.Auth.Account
 -- >
 -- >share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistUpperCase|
 -- >User

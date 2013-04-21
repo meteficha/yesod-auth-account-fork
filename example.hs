@@ -8,7 +8,7 @@ import Database.Persist.Sqlite
 import Control.Monad.Logger (runStderrLoggingT)
 import Yesod
 import Yesod.Auth
-import YesodAuthAccount
+import Yesod.Auth.Account
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistUpperCase|
 User
