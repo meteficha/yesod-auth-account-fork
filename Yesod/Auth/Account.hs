@@ -89,17 +89,21 @@ module Yesod.Auth.Account(
 
 import Control.Applicative
 import Control.Monad.Reader hiding (lift)
+import Data.Char (isAlphaNum)
+import System.Random (newStdGen, randoms)
+import Text.Blaze.Html (toHtml)
 import qualified Crypto.PasswordStore as PS
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as B64
-import Data.Char (isAlphaNum)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.Persist as P
 import qualified Database.Persist.Query.Internal as P (Update)
-import System.Random (newStdGen, randoms)
-import Yesod hiding (get, replace, insertKey, Entity, entityVal)
+
+import Yesod.Core
+import Yesod.Form
 import Yesod.Auth
+import Yesod.Persist hiding (get, replace, insertKey, Entity, entityVal)
 import qualified Yesod.Auth.Message as Msg
 
 -- | Each user is uniquely identified by a username.
