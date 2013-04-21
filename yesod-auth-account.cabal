@@ -6,7 +6,7 @@ synopsis:          An account authentication plugin for Yesod
 category:          Web
 author:            John Lenz <lenz@math.uic.edu>
 maintainer:        John Lenz <lenz@math.uic.edu>
-license:           BSD3
+license:           MIT
 license-file:      LICENSE
 homepage:          https://bitbucket.org/wuzzeb/yesod-auth-account
 stability:         Experimental
