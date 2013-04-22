@@ -14,7 +14,7 @@ description:       An auth plugin for accounts. Each account consists of a usern
                    email, and password.  The plugin provides new account, email verification,
                    and password reset pages that can be customized to enhance the user experience.
 
-extra-source-files: example.hs
+extra-source-files: example.hs, README.md
 
 source-repository head
     type: mercurial
