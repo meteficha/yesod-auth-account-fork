@@ -52,6 +52,7 @@ test-suite test
                  , persistent-sqlite
                  , resourcet
                  , text
+                 , xml-conduit
                  , yesod
                  , yesod-test
                  , yesod-auth
