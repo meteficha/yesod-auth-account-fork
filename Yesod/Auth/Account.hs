@@ -120,7 +120,7 @@ import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.Persist as P
-import qualified Database.Persist.Query.Internal as P (Update)
+--import qualified Database.Persist.Query.Internal as P (Update)
 
 import Yesod.Core
 import Yesod.Form
@@ -308,7 +308,7 @@ data LoginData = LoginData {
 -- You can embed this form into your own pages if you want a custom rendering of this
 -- form or to include a login form on your own pages. The form submission should be
 -- posted to 'loginFormPostTargetR'.
-loginForm :: YesodAuthAccount db master => AForm s master LoginData
+loginForm :: YesodAuthAccount db master => AForm (HandlerT master IO) LoginData
 loginForm = LoginData <$> areq (checkM checkValidUsername textField) userSettings Nothing
                       <*> areq passwordField pwdSettings Nothing
     where userSettings = FieldSettings (SomeMessage MsgUsername) Nothing (Just "username") Nothing []
@@ -318,9 +318,9 @@ loginForm = LoginData <$> areq (checkM checkValidUsername textField) userSetting
 --
 -- This is the widget used in the default implementation of 'loginHandler'.
 -- The widget also includes links to the new account and reset password pages.
-loginWidget :: YesodAuthAccount db master => (Route Auth -> Route master) -> GWidget s master ()
+loginWidget :: YesodAuthAccount db master => (Route Auth -> Route master) -> WidgetT master IO ()
 loginWidget tm = do
-    ((_,widget), enctype) <- lift $ runFormPostNoToken $ renderDivs loginForm
+    ((_,widget), enctype) <- runFormPostNoToken $ renderDivs loginForm
     [whamlet|
 <div .loginDiv>
     <form method=post enctype=#{enctype} action=@{tm loginFormPostTargetR}>
@@ -331,7 +331,7 @@ loginWidget tm = do
         <a href="@{tm resetPasswordR}">_{MsgForgotPassword}
 |]
 
-postLoginR :: YesodAuthAccount db master => GHandler Auth master RepHtml
+postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
 postLoginR = do
     ((result, _), _) <- runFormPostNoToken $ renderDivs loginForm
     mr <- getMessageRender
@@ -347,11 +347,10 @@ postLoginR = do
                                 then Right u
                                 else Left [mr MsgInvalidUserOrPwd]
     
-    tm <- getRouteToMaster
     case muser of
         Left errs -> do
             setMessage $ toHtml $ T.concat errs
-            redirect $ tm LoginR
+            redirect LoginR
 
         Right u -> if userEmailVerified u
                         then do setCreds True $ Creds "account" (username u) []
@@ -402,7 +401,7 @@ data NewAccountData = NewAccountData {
 -- form into a larger form where you prompt for more information during account
 -- creation.  In this case, the NewAccountData should be passed to 'createNewAccount'
 -- from inside 'postNewAccountR'.
-newAccountForm :: (YesodAuth m, RenderMessage m FormMessage) => AForm s m NewAccountData
+newAccountForm :: (YesodAuth m, RenderMessage m FormMessage) => AForm (HandlerT m IO) NewAccountData
 newAccountForm = NewAccountData <$> areq textField userSettings Nothing
                                 <*> areq emailField emailSettings Nothing
                                 <*> areq passwordField pwdSettings1 Nothing
@@ -413,12 +412,12 @@ newAccountForm = NewAccountData <$> areq textField userSettings Nothing
           pwdSettings2  = FieldSettings (SomeMessage Msg.ConfirmPass) Nothing Nothing Nothing []
 
 -- | A default rendering of the 'newAccountForm' using renderDivs.
-newAccountWidget :: (YesodAuth m, RenderMessage m FormMessage) => (Route Auth -> Route m) -> GWidget s m ()
-newAccountWidget tm = do
+newAccountWidget :: (YesodAuth m, RenderMessage m FormMessage) => WidgetT m IO ()
+newAccountWidget = do
     ((_,widget), enctype) <- lift $ runFormPost $ renderDivs newAccountForm
     [whamlet|
 <div .newaccountDiv>
-    <form method=post enctype=#{enctype} action=@{tm newAccountR}>
+    <form method=post enctype=#{enctype} action=@{newAccountR}>
         ^{widget}
         <input type=submit value=_{Msg.Register}>
 |]
@@ -431,7 +430,7 @@ newAccountWidget tm = do
 -- be run first in your handler.  Note that this action does not check if the passwords
 -- are equal. If an error occurs (username exists, etc.) this will set a message and
 -- redirect to 'newAccountR'.
-createNewAccount :: YesodAuthAccount db master => NewAccountData -> (Route Auth -> Route master) -> GHandler s master (UserAccount db)
+createNewAccount :: YesodAuthAccount db master => NewAccountData -> (Route Auth -> Route master) -> HandlerT master IO (UserAccount db)
 createNewAccount (NewAccountData u email pwd _) tm = do
     muser <- runAccountDB $ loadUser u
     case muser of
@@ -453,19 +452,18 @@ createNewAccount (NewAccountData u email pwd _) tm = do
     setMessageI $ Msg.ConfirmationEmailSent email
     return new
 
-getVerifyR :: YesodAuthAccount db master => Username -> T.Text -> GHandler Auth master ()
+getVerifyR :: YesodAuthAccount db master => Username -> T.Text -> HandlerT Auth (HandlerT master IO) ()
 getVerifyR uname k = do
-    tm <- getRouteToMaster
     muser <- runAccountDB $ loadUser uname
     case muser of
         Nothing -> do setMessageI Msg.InvalidKey
-                      redirect $ tm LoginR
+                      redirect LoginR
         Just user -> do when (    userEmailVerifyKey user == "" 
                                || userEmailVerifyKey user /= k
                                || userEmailVerified user
                              ) $ do
                             setMessageI Msg.InvalidKey
-                            redirect $ tm LoginR
+                            redirect LoginR
                         runAccountDB $ verifyAccount user
                         setMessageI MsgEmailVerified
                         setCreds True $ Creds "account" uname []
@@ -474,21 +472,21 @@ getVerifyR uname k = do
 --
 -- Intended for use in 'unregisteredLogin'.  The result should be posted to
 -- 'resendVerifyR'.
-resendVerifyEmailForm :: RenderMessage m FormMessage => Username -> AForm s m Username
+resendVerifyEmailForm :: RenderMessage m FormMessage => Username -> AForm (HandlerT m IO) Username
 resendVerifyEmailForm u = areq hiddenField "" $ Just u
 
 -- | A default rendering of 'resendVerifyEmailForm'
-resendVerifyEmailWidget :: RenderMessage m FormMessage => Username -> (Route Auth -> Route m) -> GWidget s m ()
-resendVerifyEmailWidget u tm = do
+resendVerifyEmailWidget :: RenderMessage m FormMessage => Username -> WidgetT m IO ()
+resendVerifyEmailWidget u = do
     ((_,widget), enctype) <- lift $ runFormPost $ renderDivs $ resendVerifyEmailForm u
     [whamlet|
 <div .resendVerifyEmailDiv>
-    <form method=post enctype=#{enctype} action=@{tm resendVerifyR}>
+    <form method=post enctype=#{enctype} action=@{resendVerifyR}>
         ^{widget}
         <input type=submit value=_{MsgResendVerifyEmail}>
 |]
 
-postResendVerifyEmailR :: YesodAuthAccount db master => GHandler Auth master ()
+postResendVerifyEmailR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) ()
 postResendVerifyEmailR = do
     ((result, _), _) <- runFormPost $ renderDivs $ resendVerifyEmailForm ""
     muser <- case result of
@@ -501,12 +499,11 @@ postResendVerifyEmailR = do
         Nothing -> invalidArgs ["Invalid username"] 
         Just u  -> do
             key <- newVerifyKey
-            tm <- getRouteToMaster
             runAccountDB $ setVerifyKey u key
             render <- getUrlRender
-            sendVerifyEmail (username u) (userEmail u) $ render $ tm $ verifyR (username u) key
+            sendVerifyEmail (username u) (userEmail u) $ render $ verifyR (username u) key
             setMessageI $ Msg.ConfirmationEmailSent (userEmail u)
-            redirect $ tm LoginR
+            redirect LoginR
 
 ---------------------------------------------------------------------------------------------------
 
@@ -537,26 +534,25 @@ postResendVerifyEmailR = do
 -- | A form for the user to request that an email be sent to them to allow them to reset
 -- their password.  This form contains a field for the username (plus the CSRF token).
 -- The form should be posted to 'resetPasswordR'.
-resetPasswordForm :: RenderMessage m FormMessage => AForm s m Username
+resetPasswordForm :: RenderMessage m FormMessage => AForm (HandlerT m IO) Username
 resetPasswordForm = areq textField userSettings Nothing
     where userSettings = FieldSettings (SomeMessage MsgUsername) Nothing (Just "username") Nothing []
 
 -- | A default rendering of 'resetPasswordForm'.
-resetPasswordWidget :: RenderMessage m FormMessage => (Route Auth -> Route m) -> GWidget s m ()
-resetPasswordWidget tm = do
+resetPasswordWidget :: RenderMessage m FormMessage => WidgetT m IO ()
+resetPasswordWidget = do
     ((_,widget), enctype) <- lift $ runFormPost $ renderDivs resetPasswordForm
     [whamlet|
 <div .resetPasswordDiv>
-    <form method=post enctype=#{enctype} action=@{tm resetPasswordR}>
+    <form method=post enctype=#{enctype} action=@{resetPasswordR}>
         ^{widget}
         <input type=submit value=_{MsgSendResetPwdEmail}>
 |]
 
-postResetPasswordR :: YesodAuthAccount db master => GHandler Auth master RepHtml
+postResetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
 postResetPasswordR = do
     allow <- allowPasswordReset <$> getYesod
     unless allow notFound
-    tm <- getRouteToMaster
     ((result, _), _) <- runFormPost $ renderDivs resetPasswordForm
     mdata <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
@@ -566,19 +562,19 @@ postResetPasswordR = do
     case mdata of
         Left errs -> do
             setMessage $ toHtml $ T.concat errs
-            redirect $ tm LoginR
+            redirect LoginR
 
         Right Nothing -> do
             setMessageI MsgInvalidUsername
-            redirect $ tm resetPasswordR
+            redirect resetPasswordR
 
         Right (Just u) -> do key <- newVerifyKey
                              runAccountDB $ setNewPasswordKey u key
                              render <- getUrlRender
-                             sendNewPasswordEmail (username u) (userEmail u) $ render $ tm $ newPasswordR (username u) key
+                             sendNewPasswordEmail (username u) (userEmail u) $ render $ newPasswordR (username u) key
                              -- Don't display the email in the message since anybody can request the resend.
                              setMessageI MsgResetPwdEmailSent
-                             redirect $ tm LoginR
+                             redirect LoginR
 
 -- | The data for setting a new password.
 data NewPasswordData = NewPasswordData {
@@ -593,7 +589,7 @@ data NewPasswordData = NewPasswordData {
 newPasswordForm :: (YesodAuth m, RenderMessage m FormMessage)
                 => Username 
                 -> T.Text -- ^ key
-                -> AForm s m NewPasswordData
+                -> AForm (HandlerT m IO) NewPasswordData
 newPasswordForm u k = NewPasswordData <$> areq hiddenField "" (Just u)
                                       <*> areq hiddenField "" (Just k)
                                       <*> areq passwordField pwdSettings1 Nothing
@@ -602,48 +598,46 @@ newPasswordForm u k = NewPasswordData <$> areq hiddenField "" (Just u)
           pwdSettings2 = FieldSettings (SomeMessage Msg.ConfirmPass) Nothing Nothing Nothing []
 
 -- | A default rendering of 'newPasswordForm'.
-newPasswordWidget :: YesodAuthAccount db master => UserAccount db -> (Route Auth -> Route master) -> GWidget s master ()
-newPasswordWidget user tm = do
+newPasswordWidget :: YesodAuthAccount db master => UserAccount db -> WidgetT master IO ()
+newPasswordWidget user = do
     let key = userResetPwdKey user
     ((_,widget), enctype) <- lift $ runFormPost $ renderDivs (newPasswordForm (username user) key)
     [whamlet|
 <div .newpassDiv>
     <p>_{Msg.SetPass}
-    <form method=post enctype=#{enctype} action=@{tm setPasswordR}>
+    <form method=post enctype=#{enctype} action=@{setPasswordR}>
         ^{widget}
         <input type=submit value=_{Msg.SetPassTitle}>
 |]
 
-getNewPasswordR :: YesodAuthAccount db master => Username -> T.Text -> GHandler Auth master RepHtml
+getNewPasswordR :: YesodAuthAccount db master => Username -> T.Text -> HandlerT Auth (HandlerT master IO) RepHtml
 getNewPasswordR uname k = do
     allow <- allowPasswordReset <$> getYesod
     unless allow notFound
     muser <- runAccountDB $ loadUser uname
-    tm <- getRouteToMaster
     case muser of
         Just user | userResetPwdKey user /= "" && userResetPwdKey user == k ->
             setPasswordHandler user
 
         _ -> do setMessageI Msg.InvalidKey
-                redirect $ tm LoginR
+                redirect LoginR
 
-postSetPasswordR :: YesodAuthAccount db master => GHandler Auth master ()
+postSetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) ()
 postSetPasswordR = do
     allow <- allowPasswordReset <$> getYesod
     unless allow notFound
-    tm <- getRouteToMaster
     ((result,_), _) <- runFormPost $ renderDivs (newPasswordForm "" "")
     mnew <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
                 FormFailure msg -> return $ Left msg
                 FormSuccess d | newPasswordPwd1 d == newPasswordPwd2 d -> return $ Right d
                 FormSuccess d -> do setMessageI Msg.PassMismatch
-                                    redirect $ tm $ newPasswordR (newPasswordUser d) (newPasswordKey d)
+                                    redirect $ newPasswordR (newPasswordUser d) (newPasswordKey d)
 
     case mnew of
         Left errs -> do
             setMessage $ toHtml $ T.concat errs
-            redirect $ tm LoginR
+            redirect LoginR
 
         Right d -> do muser <- runAccountDB $ loadUser (newPasswordUser d)
                       case muser of
@@ -689,11 +683,7 @@ class PersistUserCredentials u where
     userEmailVerifiedF  :: P.EntityField u Bool
     userEmailVerifyKeyF :: P.EntityField u T.Text
     userResetPwdKeyF    :: P.EntityField u T.Text
-#if 1
     uniqueUsername      :: T.Text -> P.Unique u
-#else
-    uniqueUsername      :: T.Text -> P.Unique u (P.PersistEntityBackend u)
-#endif
 
     -- | Creates a new user for use during 'addNewUser'.  The starting reset password
     -- key should be the empty string.
@@ -707,24 +697,21 @@ class PersistUserCredentials u where
 --
 -- Persistent users can use 'AccountPersistDB' and don't need to create their own instance.
 -- If you are not using persistent or are using persistent but want to customize the database
--- activity, you must manually create an instance.  The kind of @b@ is @* -> * -> *@.  The first
--- type argument to @b@ is a subsite, and @b sub@ should be a monad which embeds
--- @GHandler sub master a@.  It is unfortunate that the order of sub and master must be flipped,
--- so you will need a newtype.  For example,
+-- activity, you must manually make a monad an instance of this class.  You can use any monad
+-- for which you can write 'runAccountDB', but typically the monad will be a newtype of HandlerT.
+-- For example,
 --
--- > newtype MyAccountDB sub a = MyAccountDB {runMyAccountDB :: GHandler sub MyApp a}
--- >    deriving (Monad, MonadIO)
--- > instance MonadLift (GHandler sub MyApp) (MyAccountDB sub) where
--- >     lift = MyAccountDB
+-- > newtype MyAccountDB a = MyAccountDB {runMyAccountDB :: HandlerT MyApp IO a}
+-- >    deriving (Monad, MonadIO, MonadTrans, MonadHandler)
 -- > instance AccountDB MyAccountDB where
 -- >     ....
 --
-class AccountDB b where
+class AccountDB m where
     -- | The data type which stores the user.  Must be an instance of 'UserCredentials'.
-    type UserAccount b
+    type UserAccount m
 
     -- | Load a user by username
-    loadUser :: Username -> b sub (Maybe (UserAccount b))
+    loadUser :: Username -> m (Maybe (UserAccount m))
 
     -- | Create new account.  The password reset key should be added as an empty string.
     -- The creation can fail with an error message, in which case the error is set in a
@@ -733,27 +720,27 @@ class AccountDB b where
                -> T.Text       -- ^ unverified email
                -> T.Text       -- ^ the email verification key
                -> B.ByteString -- ^ hashed and salted password
-               -> b sub (Either T.Text (UserAccount b))
+               -> m (Either T.Text (UserAccount m))
 
     -- | Mark the account as successfully verified.  This should reset the email validation key
     -- to the empty string.
-    verifyAccount :: UserAccount b -> b sub ()
+    verifyAccount :: UserAccount m -> m ()
 
     -- | Change/set the users email verification key.
-    setVerifyKey :: UserAccount b 
+    setVerifyKey :: UserAccount m 
                  -> T.Text -- ^ the verification key
-                 -> b sub ()
+                 -> m ()
 
     -- | Change/set the users password reset key.
-    setNewPasswordKey :: UserAccount b
+    setNewPasswordKey :: UserAccount m
                       -> T.Text -- ^ the key
-                      -> b sub ()
+                      -> m ()
 
     -- | Set a new hashed password.  This should also set the password reset key to the empty
     -- string.
-    setNewPassword :: UserAccount b
+    setNewPassword :: UserAccount m
                    -> B.ByteString -- ^ hashed password
-                   -> b sub ()
+                   -> m ()
 
 -- | A class to send email.
 --
@@ -763,7 +750,7 @@ class AccountSendEmail master where
     sendVerifyEmail :: Username
                     -> T.Text -- ^ email address
                     -> T.Text -- ^ verification URL
-                    -> GHandler s master ()
+                    -> HandlerT master IO ()
     sendVerifyEmail uname email url =
         $(logInfo) $ T.concat [ "Verification email for "
                               , uname
@@ -774,7 +761,7 @@ class AccountSendEmail master where
     sendNewPasswordEmail :: Username
                          -> T.Text -- ^ email address
                          -> T.Text -- ^ new password URL
-                         -> GHandler s master ()
+                         -> HandlerT master IO ()
     sendNewPasswordEmail uname email url =
         $(logInfo) $ T.concat [ "Reset password email for "
                               , uname
@@ -807,7 +794,7 @@ class (YesodAuth master
       ) => YesodAuthAccount db master | master -> db where
 
     -- | Run a database action.  This is the only required method.
-    runAccountDB :: db sub a -> GHandler sub master a
+    runAccountDB :: db a -> HandlerT master IO a
 
     -- | A form validator for valid usernames during new account creation.
     --
@@ -815,7 +802,7 @@ class (YesodAuth master
     -- this validation and instead validate in 'addNewUser', but validating here
     -- allows the validation to occur before database activity (checking existing
     -- username) and before random salt creation (requires IO).
-    checkValidUsername :: Username -> GHandler s master (Either T.Text Username)
+    checkValidUsername :: Username -> HandlerT master IO (Either T.Text Username)
     checkValidUsername u | T.all isAlphaNum u = return $ Right u
     checkValidUsername _ = do
         mr <- getMessageRender
@@ -826,35 +813,32 @@ class (YesodAuth master
     -- By default, this displays a message and contains 'resendVerifyEmailForm', allowing
     -- the user to resend the verification email.  The handler is run inside the post
     -- handler for login, so you can call 'setCreds' to preform a successful login.
-    unregisteredLogin :: UserAccount db -> GHandler Auth master RepHtml
+    unregisteredLogin :: UserAccount db -> HandlerT Auth (HandlerT master IO) RepHtml
     unregisteredLogin u = do
-        tm <- getRouteToMaster
         defaultLayout $ do
             setTitleI MsgEmailUnverified
             [whamlet|
 <p>_{MsgEmailUnverified}
-^{resendVerifyEmailWidget (username u) tm}
+^{resendVerifyEmailWidget (username u)}
 |]
 
     -- | The new account page.
     --
     -- This is the page which is displayed on a GET to 'newAccountR', and defaults to
     -- an embedding of 'newAccountWidget'.
-    getNewAccountR :: GHandler Auth master RepHtml
+    getNewAccountR :: HandlerT Auth (HandlerT master IO) RepHtml
     getNewAccountR = do
-        tm <- getRouteToMaster
         defaultLayout $ do
             setTitleI Msg.RegisterLong
-            newAccountWidget tm
+            newAccountWidget
 
     -- | Handles new account creation.
     --
     -- By default, this processes 'newAccountForm', calls 'createNewAccount', sets a message
     -- and redirects to LoginR.  If an error occurs, a message is set and the user is
     -- redirected to 'newAccountR'.
-    postNewAccountR :: GHandler Auth master RepHtml
+    postNewAccountR :: HandlerT Auth (HandlerT master IO) RepHtml
     postNewAccountR = do
-        tm <- getRouteToMaster
         mr <- getMessageRender
         ((result, _), _) <- runFormPost $ renderDivs newAccountForm
         mdata <- case result of
@@ -866,10 +850,10 @@ class (YesodAuth master
         case mdata of
             Left errs -> do
                 setMessage $ toHtml $ T.concat errs
-                redirect $ tm newAccountR
+                redirect newAccountR
 
-            Right d -> do void $ createNewAccount d tm
-                          redirect $ tm LoginR
+            Right d -> do void $ createNewAccount d
+                          redirect LoginR
 
     -- | Should the password reset inside this plugin be allowed?  Defaults to True
     allowPasswordReset :: master -> Bool
@@ -877,23 +861,21 @@ class (YesodAuth master
 
     -- | The page which prompts for a username and sends an email allowing password reset.
     --   By default, it embeds 'resetPasswordWidget'.
-    getResetPasswordR :: GHandler Auth master RepHtml
+    getResetPasswordR :: HandlerT Auth (HandlerT master IO) RepHtml
     getResetPasswordR = do
-        tm <- getRouteToMaster
         defaultLayout $ do
             setTitleI MsgResetPwdTitle
-            resetPasswordWidget tm
+            resetPasswordWidget
 
     -- | The page which allows the user to set a new password.
     --
     -- This is called only when the email key has been verified as correct. By default, it embeds
     -- 'newPasswordWidget'.
-    setPasswordHandler :: UserAccount db -> GHandler Auth master RepHtml
+    setPasswordHandler :: UserAccount db -> HandlerT Auth (HandlerT master IO) RepHtml
     setPasswordHandler u = do
-        tm <- getRouteToMaster
         defaultLayout $ do
             setTitleI Msg.SetPassTitle
-            newPasswordWidget u tm
+            newPasswordWidget u
 
 -- | Salt and hash a password.
 hashPassword :: MonadIO m => T.Text -> m B.ByteString
@@ -930,14 +912,14 @@ instance (P.PersistEntity u, PersistUserCredentials u) => UserCredentials (P.Ent
     userResetPwdKey u = u ^. fieldLens userResetPwdKeyF
 
 -- | Internal state for the AccountPersistDB monad.
-data PersistFuncs master user sub = PersistFuncs {
-      pGet :: T.Text -> GHandler sub master (Maybe (P.Entity user))
-    , pInsert :: Username -> user -> GHandler sub master (Either T.Text (P.Entity user))
-    , pUpdate :: P.Entity user -> [P.Update user] -> GHandler sub master ()
+data PersistFuncs master user = PersistFuncs {
+      pGet :: T.Text -> HandlerT master IO (Maybe (P.Entity user))
+    , pInsert :: Username -> user -> HandlerT master IO (Either T.Text (P.Entity user))
+    , pUpdate :: P.Entity user -> [P.Update user] -> HandlerT master IO ()
 }
 
 -- | A newtype which when using persistent is an instance of 'AccountDB'.
-newtype AccountPersistDB master user sub a = AccountPersistDB (ReaderT (PersistFuncs master user sub) (GHandler sub master) a)
+newtype AccountPersistDB master user a = AccountPersistDB (ReaderT (PersistFuncs master user) (HandlerT master IO) a)
     deriving (Monad, MonadIO)
 
 instance (Yesod master, PersistUserCredentials user) => AccountDB (AccountPersistDB master user) where
@@ -969,24 +951,18 @@ instance (Yesod master, PersistUserCredentials user) => AccountDB (AccountPersis
         lift $ pUpdate f u [ userPasswordHashF P.=. pwd
                            , userResetPwdKeyF P.=. ""]
 
+{-
 -- | Use this for 'runAccountDB' if you are using 'AccountPersistDB' as your database type.
 runAccountPersistDB :: ( Yesod master
                        , YesodPersist master
                        , P.PersistEntity user
                        , PersistUserCredentials user
                        , b ~ YesodPersistBackend master
-#if 1
-                       , P.PersistMonadBackend (b (GHandler sub master)) ~ P.PersistEntityBackend user
-                       , P.PersistUnique (b (GHandler sub master))
-                       , P.PersistQuery (b (GHandler sub master))
-#else
                        , b ~ P.PersistEntityBackend user
-                       , P.PersistUnique b (GHandler sub master)
-                       , P.PersistQuery b (GHandler sub master)
-#endif
-    
+                       , P.PersistUnique b (HandlerT master IO)
+                       , P.PersistQuery b (HandlerT master IO)
                        ) 
-                       => AccountPersistDB master user sub a -> GHandler sub master a
+                       => AccountPersistDB master user sub a -> HandlerT master IO a
 runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs
     where funcs = PersistFuncs {
                       pGet = runDB . P.getBy . uniqueUsername
@@ -997,3 +973,4 @@ runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs
                                                  Right k -> return $ Right $ P.Entity k u
                     , pUpdate = \(P.Entity key _) u -> runDB $ P.update key u
                     }
+-}
