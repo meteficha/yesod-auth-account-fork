@@ -179,7 +179,7 @@ type Username = T.Text
 -- >    renderMessage _ _ = defaultFormMessage
 -- >
 -- >instance YesodPersist MyApp where
--- >    type YesodPersistBackend MyApp = SqlPersist
+-- >    type YesodPersistBackend MyApp = SqlPersistT
 -- >    runDB action = do
 -- >        MyApp pool <- getYesod
 -- >        runSqlPool action pool
@@ -192,6 +192,7 @@ type Username = T.Text
 -- >    authPlugins _ = [accountPlugin]
 -- >    authHttpManager _ = error "No manager needed"
 -- >    onLogin = return ()
+-- >    maybeAuthId = lookupSession "_ID"
 -- >
 -- >instance AccountSendEmail MyApp
 -- >
@@ -213,7 +214,7 @@ type Username = T.Text
 -- >main :: IO ()
 -- >main = withSqlitePool "test.db3" 10 $ \pool -> do
 -- >    runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
--- >    warpDebug 3000 $ MyApp pool
+-- >    warp 3000 $ MyApp pool
 --
 accountPlugin :: YesodAuthAccount db master => AuthPlugin master
 accountPlugin = AuthPlugin "account" dispatch loginWidget
