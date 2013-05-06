@@ -51,7 +51,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 --   just logs a message so during development this class requires no implementation.
 --
 -- * Make your master site and database an instance of 'YesodAuthAccount'.  There is only
---   one required function which must be implemented ('runAccountDatabase') although there
+--   one required function which must be implemented ('runAccountDB') although there
 --   are several functions you can override in this class to customize the behavior of this
 --   module.
 --

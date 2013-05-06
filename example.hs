@@ -46,7 +46,7 @@ instance RenderMessage MyApp FormMessage where
     renderMessage _ _ = defaultFormMessage
 
 instance YesodPersist MyApp where
-    type YesodPersistBackend MyApp = SqlPersist
+    type YesodPersistBackend MyApp = SqlPersistT
     runDB action = do
         MyApp pool <- getYesod
         runSqlPool action pool
@@ -59,6 +59,7 @@ instance YesodAuth MyApp where
     authPlugins _ = [accountPlugin]
     authHttpManager _ = error "No manager needed"
     onLogin = return ()
+    maybeAuthId = lookupSession "_ID"
 
 instance AccountSendEmail MyApp
 
@@ -80,5 +81,5 @@ getHomeR = do
 main :: IO ()
 main = withSqlitePool "test.db3" 10 $ \pool -> do
     runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
-    warpDebug 3000 $ MyApp pool
+    warp 3000 $ MyApp pool
 
