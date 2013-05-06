@@ -14,7 +14,13 @@ description:       An auth plugin for accounts. Each account consists of a usern
                    email, and password.  The plugin provides new account, email verification,
                    and password reset pages that can be customized to enhance the user experience.
 
-extra-source-files: example.hs, README.md
+-- Temp workaround for http://hackage.haskell.org/trac/hackage/ticket/792
+extra-source-files: example.hs
+                  , README.md
+                  , tests/BasicTests.hs
+                  , tests/Foundation.hs
+                  , tests/NewAccount.hs
+
 
 source-repository head
     type: mercurial
