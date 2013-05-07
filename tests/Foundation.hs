@@ -8,11 +8,11 @@ import Data.Text (Text)
 import Data.ByteString (ByteString)
 import Database.Persist.Sqlite
 import Data.IORef
-import Control.Monad.Trans (MonadIO)
 import System.IO.Unsafe (unsafePerformIO)
 import Yesod
 import Yesod.Auth
 import Yesod.Auth.Account
+import Yesod.Test
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistUpperCase|
 User
@@ -64,7 +64,7 @@ instance RenderMessage MyApp FormMessage where
     renderMessage _ _ = defaultFormMessage
 
 instance YesodPersist MyApp where
-    type YesodPersistBackend MyApp = SqlPersist
+    type YesodPersistBackend MyApp = SqlPersistT
     runDB action = do
         MyApp pool <- getYesod
         runSqlPool action pool
@@ -77,6 +77,7 @@ instance YesodAuth MyApp where
     authPlugins _ = [accountPlugin]
     authHttpManager _ = error "No manager needed"
     onLogin = return ()
+    maybeAuthId = lookupSession "_ID"
 
 instance AccountSendEmail MyApp where
     sendVerifyEmail name email url =
@@ -99,3 +100,13 @@ getHomeR = do
 <p>You are logged in as #{u}
 <p><a href="@{AuthR LogoutR}">Logout</a>
 |]
+
+-- Temporary helpers for testing
+get' :: Yesod site => Text -> YesodExample site ()
+get' url = Yesod.Test.get url
+
+post' :: Yesod site => Text -> RequestBuilder site () -> YesodExample site ()
+post' url builder = request $ do
+    setUrl url
+    setMethod "POST"
+    builder

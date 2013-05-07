@@ -1,21 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 module NewAccount (newAccountSpecs) where
 
+import Yesod.Auth
 import Yesod.Test
 import Foundation
-import Database.Persist.Sqlite
 import Text.XML.Cursor (attribute)
-import qualified Data.Text.Encoding as T
 
-newAccountSpecs :: SpecsConn Connection
+newAccountSpecs :: YesodSpec MyApp
 newAccountSpecs =
-    describe "New account tests" $ do
-        it "new account with mismatched passwords" $ do
-            get_ "/auth/page/account/newaccount"
+    ydescribe "New account tests" $ do
+        yit "new account with mismatched passwords" $ do
+            get' "/auth/page/account/newaccount"
             statusIs 200
             bodyContains "Register"
 
-            post "/auth/page/account/newaccount" $ do
+            post'"/auth/page/account/newaccount" $ do
                 addNonce
                 byLabel "Username" "abc"
                 byLabel "Email" "test@example.com"
@@ -23,15 +22,15 @@ newAccountSpecs =
                 byLabel "Confirm" "yyy"
 
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "Passwords did not match"
 
-        it "creates a new account" $ do
-            get_ "/auth/page/account/newaccount"
+        yit "creates a new account" $ do
+            get' "/auth/page/account/newaccount"
             statusIs 200
 
-            post "/auth/page/account/newaccount" $ do
+            post'"/auth/page/account/newaccount" $ do
                 addNonce
                 byLabel "Username" "abc"
                 byLabel "Email" "test@example.com"
@@ -39,7 +38,7 @@ newAccountSpecs =
                 byLabel "Confirm" "xxx"
 
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "A confirmation e-mail has been sent to test@example.com"
 
@@ -47,36 +46,36 @@ newAccountSpecs =
             assertEqual "username" username "abc"
             assertEqual "email" email "test@example.com"
 
-            get_ "/auth/page/account/verify/abc/zzzzzz"
+            get' "/auth/page/account/verify/abc/zzzzzz"
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "invalid verification key"
 
             -- try login
-            get_ "/auth/login"
+            get' "/auth/login"
             statusIs 200
-            post "/auth/page/account/login" $ do
+            post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "yyy"
             statusIs 303
-            get_ "/auth/login"
+            get' "/auth/login"
             statusIs 200
             bodyContains "Invalid username or password"
 
             -- valid login
-            post "/auth/page/account/login" $ do
+            post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
             statusIs 200
             bodyContains "Your email has not yet been verified"
 
             -- resend verify email
-            post "/auth/page/account/resendverifyemail" $ do
+            post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
-                byName "f2" "abc" -- username is also a hidden field
+                addPostParam "f2" "abc" -- username is also a hidden field
             statusIs 303
-            get_ "/"
+            get' "/"
             bodyContains "A confirmation e-mail has been sent to test@example.com"
 
             (username', email', verify') <- lastVerifyEmail
@@ -85,39 +84,39 @@ newAccountSpecs =
             assertEqual "verify" True (verify /= verify')
 
             -- verify email
-            get_ $ T.encodeUtf8 verify'
+            get' verify'
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
 
-            post_ "/auth/logout"
+            post $ AuthR LogoutR
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "Please visit the <a href=\"/auth/login\">Login page"
 
             -- valid login
-            get_ "/auth/login"
-            post "/auth/page/account/login" $ do
+            get' "/auth/login"
+            post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
             statusIs 303
-            get_ "/"
+            get' "/"
             bodyContains "You are logged in as abc"
 
             -- logout
-            post_ "/auth/logout"
+            post $ AuthR LogoutR
 
             -- reset password
-            get_ "/auth/page/account/resetpassword"
+            get' "/auth/page/account/resetpassword"
             statusIs 200
             bodyContains "Send email to reset password"
-            post "/auth/page/account/resetpassword" $ do
+            post'"/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
                 addNonce
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "A password reset email has been sent to your email address"
 
@@ -126,44 +125,44 @@ newAccountSpecs =
             assertEqual "Email" email'' "test@example.com"
 
             -- bad key
-            get_ $ T.encodeUtf8 newpwd
+            get' newpwd
             statusIs 200
-            post "/auth/page/account/setpassword" $ do
+            post'"/auth/page/account/setpassword" $ do
                 addNonce
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
-                byName "f2" "abc"
-                byName "f3" "qqqqqqqqqqqqqq"
+                addPostParam "f2" "abc"
+                addPostParam "f3" "qqqqqqqqqqqqqq"
             statusIs 403
             bodyContains "Invalid key"
 
             -- good key
-            get_ $ T.encodeUtf8 newpwd
+            get' newpwd
             statusIs 200
-            post "/auth/page/account/setpassword" $ do
+            matches <- htmlQuery "input[name=f3][type=hidden][value]"
+            post'"/auth/page/account/setpassword" $ do
                 addNonce
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
-                byName "f2" "abc"
-                matches <- htmlQuery "input[name=f3][type=hidden][value]"
+                addPostParam "f2" "abc"
                 key <- case matches of
                           [] -> error "Unable to find set password key"
                           element:_ -> return $ head $ attribute "value" $ parseHTML element
-                byName "f3" key
+                addPostParam "f3" key
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "Password updated"
             bodyContains "You are logged in as abc"
 
-            post_ "/auth/logout"
+            post $ AuthR LogoutR
 
             -- check new password
-            get_ "/auth/login"
-            post "/auth/page/account/login" $ do
+            get' "/auth/login"
+            post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "www"
             statusIs 303
-            get_ "/"
+            get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
