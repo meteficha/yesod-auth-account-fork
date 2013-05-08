@@ -378,7 +378,7 @@ postLoginR = do
 --
 -- * A POST to 'resendVerifyR' of 'resendVerifyEmailForm' will generate a new verification key
 --   and resend the email.  By default, 'unregisteredLogin' displays the form for resending
---   the eamil.
+--   the email.
 
 -- | The data collected in the new account form.
 data NewAccountData = NewAccountData {
@@ -525,7 +525,7 @@ postResendVerifyEmailR = do
 --   where the user can set a new password.  The key is set as a hidden field in this form.  You
 --   can customize the look of this page by overriding 'setPasswordHandler'.
 --
--- * A POST to 'setPasswordR' of 'setPasswordForm' checks if the key is correct and if so,
+-- * A POST to 'setPasswordR' of 'resetPasswordForm' checks if the key is correct and if so,
 --   resets the password.  It then calls 'setCreds' to successfully log in and so redirects to
 --   'loginDest'.
 --
@@ -707,7 +707,7 @@ class PersistUserCredentials u where
 -- For example,
 --
 -- > newtype MyAccountDB a = MyAccountDB {runMyAccountDB :: HandlerT MyApp IO a}
--- >    deriving (Monad, MonadIO, MonadTrans, MonadHandler)
+-- >    deriving (Monad, MonadIO)
 -- > instance AccountDB MyAccountDB where
 -- >     ....
 --
@@ -750,7 +750,8 @@ class AccountDB m where
 -- | A class to send email.
 --
 -- Both of the methods are implemented by default to just log a message,
--- so during development there are no required methods.
+-- so during development there are no required methods.  For production,
+-- I recommend <http://hackage.haskell.org/package/mime-mail>.
 class AccountSendEmail master where
     sendVerifyEmail :: Username
                     -> T.Text -- ^ email address
@@ -789,7 +790,7 @@ class AccountSendEmail master where
 -- a minimal instance is
 --
 -- > instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
--- >    runAccountDB = runPersistAccountDB
+-- >    runAccountDB = runAccountPersistDB
 --
 class (YesodAuth master
       , AccountSendEmail master
