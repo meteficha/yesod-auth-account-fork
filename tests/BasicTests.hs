@@ -23,7 +23,7 @@ basicSpecs =
             statusIs 303
             get' "/auth/login"
             statusIs 200
-            bodyContains "Invalid username or password"
+            bodyContains "Invalid username/password combination"
 
         yit "new account page looks ok" $ do
             get' "/auth/page/account/newaccount"
@@ -34,7 +34,7 @@ basicSpecs =
         yit "reset password page looks ok" $ do
             get' "/auth/page/account/resetpassword"
             statusIs 200
-            bodyContains "Send email to reset password"
+            bodyContains "Send password reset email"
 
             post' "/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"

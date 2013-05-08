@@ -61,7 +61,7 @@ newAccountSpecs =
             statusIs 303
             get' "/auth/login"
             statusIs 200
-            bodyContains "Invalid username or password"
+            bodyContains "Invalid username/password combination"
 
             -- valid login
             post'"/auth/page/account/login" $ do
@@ -111,7 +111,7 @@ newAccountSpecs =
             -- reset password
             get' "/auth/page/account/resetpassword"
             statusIs 200
-            bodyContains "Send email to reset password"
+            bodyContains "Send password reset email"
             post'"/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
                 addNonce

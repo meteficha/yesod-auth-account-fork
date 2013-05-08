@@ -270,11 +270,8 @@ setPasswordR = PluginR "account" ["setpassword"]
 data AccountMsg = MsgUsername
                 | MsgForgotPassword
                 | MsgInvalidUsername
-                | MsgInvalidUserOrPwd
                 | MsgUsernameExists T.Text
                 | MsgResendVerifyEmail
-                | MsgResetPwdTitle
-                | MsgSendResetPwdEmail
                 | MsgResetPwdEmailSent
                 | MsgEmailVerified
                 | MsgEmailUnverified
@@ -283,12 +280,9 @@ instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgUsername = "Username"
     renderMessage _ _ MsgForgotPassword = "Forgot password?"
     renderMessage _ _ MsgInvalidUsername = "Invalid username"
-    renderMessage _ _ MsgInvalidUserOrPwd = "Invalid username or password"
     renderMessage _ _ (MsgUsernameExists u) =
         T.concat ["The username ", u, " already exists.  Please choose an alternate username."]
     renderMessage _ _ MsgResendVerifyEmail = "Resend verification email"
-    renderMessage _ _ MsgResetPwdTitle = "Reset your password"
-    renderMessage _ _ MsgSendResetPwdEmail = "Send email to reset password"
     renderMessage _ _ MsgResetPwdEmailSent = "A password reset email has been sent to your email address."
     renderMessage _ _ MsgEmailVerified = "Your email has been verified."
     renderMessage _ _ MsgEmailUnverified = "Your email has not yet been verified."
@@ -334,18 +328,18 @@ loginWidget tm = do
 postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
 postLoginR = do
     ((result, _), _) <- lift $ runFormPostNoToken $ renderDivs loginForm
-    mr <- getMessageRender
+    mr <- lift getMessageRender
     muser <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
                 FormFailure msg -> return $ Left msg
                 FormSuccess (LoginData uname pwd) -> do
                     mu <- lift $ runAccountDB $ loadUser uname
                     case mu of
-                        Nothing -> return $ Left [mr MsgInvalidUserOrPwd]
+                        Nothing -> return $ Left [mr Msg.InvalidUsernamePass]
                         Just u -> return $
                             if verifyPassword pwd (userPasswordHash u)
                                 then Right u
-                                else Left [mr MsgInvalidUserOrPwd]
+                                else Left [mr Msg.InvalidUsernamePass]
     
     case muser of
         Left errs -> do
@@ -549,14 +543,15 @@ resetPasswordForm = areq textField userSettings Nothing
     where userSettings = FieldSettings (SomeMessage MsgUsername) Nothing (Just "username") Nothing []
 
 -- | A default rendering of 'resetPasswordForm'.
-resetPasswordWidget :: RenderMessage master FormMessage => (Route Auth -> Route master) -> WidgetT master IO ()
+resetPasswordWidget :: (YesodAuth master, RenderMessage master FormMessage)
+                    => (Route Auth -> Route master) -> WidgetT master IO ()
 resetPasswordWidget tm = do
     ((_,widget), enctype) <- liftHandlerT $ runFormPost $ renderDivs resetPasswordForm
     [whamlet|
 <div .resetPasswordDiv>
     <form method=post enctype=#{enctype} action=@{tm resetPasswordR}>
         ^{widget}
-        <input type=submit value=_{MsgSendResetPwdEmail}>
+        <input type=submit value=_{Msg.SendPasswordResetEmail}>
 |]
 
 postResetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
@@ -879,7 +874,7 @@ class (YesodAuth master
     getResetPasswordR = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
-            setTitleI MsgResetPwdTitle
+            setTitleI Msg.PasswordResetTitle
             resetPasswordWidget tm
 
     -- | The page which allows the user to set a new password.
