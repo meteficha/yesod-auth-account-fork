@@ -66,7 +66,7 @@ instance AccountSendEmail MyApp
 instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
     runAccountDB = runAccountPersistDB
 
-getHomeR :: Handler RepHtml
+getHomeR :: Handler Html
 getHomeR = do
     maid <- maybeAuthId
     case maid of
@@ -82,4 +82,3 @@ main :: IO ()
 main = withSqlitePool "test.db3" 10 $ \pool -> do
     runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
     warp 3000 $ MyApp pool
-

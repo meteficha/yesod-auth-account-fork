@@ -89,7 +89,7 @@ instance AccountSendEmail MyApp where
 instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
     runAccountDB = runAccountPersistDB
 
-getHomeR :: Handler RepHtml
+getHomeR :: Handler Html
 getHomeR = do
     maid <- maybeAuthId
     case maid of

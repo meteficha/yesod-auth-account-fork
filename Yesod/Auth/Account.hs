@@ -199,7 +199,7 @@ type Username = T.Text
 -- >instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
 -- >    runAccountDB = runAccountPersistDB
 -- >
--- >getHomeR :: Handler RepHtml
+-- >getHomeR :: Handler Html
 -- >getHomeR = do
 -- >    maid <- maybeAuthId
 -- >    case maid of
@@ -325,7 +325,7 @@ loginWidget tm = do
         <a href="@{tm resetPasswordR}">_{MsgForgotPassword}
 |]
 
-postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
+postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
 postLoginR = do
     ((result, _), _) <- lift $ runFormPostNoToken $ renderDivs loginForm
     mr <- lift getMessageRender
@@ -554,7 +554,7 @@ resetPasswordWidget tm = do
         <input type=submit value=_{Msg.SendPasswordResetEmail}>
 |]
 
-postResetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) RepHtml
+postResetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
 postResetPasswordR = do
     allow <- allowPasswordReset <$> lift getYesod
     unless allow notFound
@@ -615,7 +615,7 @@ newPasswordWidget user tm = do
         <input type=submit value=_{Msg.SetPassTitle}>
 |]
 
-getNewPasswordR :: YesodAuthAccount db master => Username -> T.Text -> HandlerT Auth (HandlerT master IO) RepHtml
+getNewPasswordR :: YesodAuthAccount db master => Username -> T.Text -> HandlerT Auth (HandlerT master IO) Html
 getNewPasswordR uname k = do
     allow <- allowPasswordReset <$> lift getYesod
     unless allow notFound
@@ -820,7 +820,7 @@ class (YesodAuth master
     -- By default, this displays a message and contains 'resendVerifyEmailForm', allowing
     -- the user to resend the verification email.  The handler is run inside the post
     -- handler for login, so you can call 'setCreds' to preform a successful login.
-    unregisteredLogin :: UserAccount db -> HandlerT Auth (HandlerT master IO) RepHtml
+    unregisteredLogin :: UserAccount db -> HandlerT Auth (HandlerT master IO) Html
     unregisteredLogin u = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
@@ -834,7 +834,7 @@ class (YesodAuth master
     --
     -- This is the page which is displayed on a GET to 'newAccountR', and defaults to
     -- an embedding of 'newAccountWidget'.
-    getNewAccountR :: HandlerT Auth (HandlerT master IO) RepHtml
+    getNewAccountR :: HandlerT Auth (HandlerT master IO) Html
     getNewAccountR = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
@@ -846,7 +846,7 @@ class (YesodAuth master
     -- By default, this processes 'newAccountForm', calls 'createNewAccount', sets a message
     -- and redirects to LoginR.  If an error occurs, a message is set and the user is
     -- redirected to 'newAccountR'.
-    postNewAccountR :: HandlerT Auth (HandlerT master IO) RepHtml
+    postNewAccountR :: HandlerT Auth (HandlerT master IO) Html
     postNewAccountR = do
         tm <- getRouteToParent
         mr <- lift getMessageRender
@@ -871,7 +871,7 @@ class (YesodAuth master
 
     -- | The page which prompts for a username and sends an email allowing password reset.
     --   By default, it embeds 'resetPasswordWidget'.
-    getResetPasswordR :: HandlerT Auth (HandlerT master IO) RepHtml
+    getResetPasswordR :: HandlerT Auth (HandlerT master IO) Html
     getResetPasswordR = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
@@ -882,7 +882,7 @@ class (YesodAuth master
     --
     -- This is called only when the email key has been verified as correct. By default, it embeds
     -- 'newPasswordWidget'.
-    setPasswordHandler :: UserAccount db -> HandlerT Auth (HandlerT master IO) RepHtml
+    setPasswordHandler :: UserAccount db -> HandlerT Auth (HandlerT master IO) Html
     setPasswordHandler u = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
