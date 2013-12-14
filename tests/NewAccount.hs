@@ -21,7 +21,7 @@ newAccountSpecs =
                 byLabel "Password" "xxx"
                 byLabel "Confirm" "yyy"
 
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "Passwords did not match"
@@ -37,7 +37,7 @@ newAccountSpecs =
                 byLabel "Password" "xxx"
                 byLabel "Confirm" "xxx"
 
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "A confirmation e-mail has been sent to test@example.com"
@@ -47,7 +47,7 @@ newAccountSpecs =
             assertEqual "email" email "test@example.com"
 
             get' "/auth/page/account/verify/abc/zzzzzz"
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
@@ -58,7 +58,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "yyy"
-            statusIs 303
+            statusIs 302
             get' "/auth/login"
             statusIs 200
             bodyContains "Invalid username/password combination"
@@ -74,7 +74,7 @@ newAccountSpecs =
             post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
                 addPostParam "f2" "abc" -- username is also a hidden field
-            statusIs 303
+            statusIs 302
             get' "/"
             bodyContains "A confirmation e-mail has been sent to test@example.com"
 
@@ -85,13 +85,13 @@ newAccountSpecs =
 
             -- verify email
             get' verify'
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
 
             post $ AuthR LogoutR
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "Please visit the <a href=\"/auth/login\">Login page"
@@ -101,7 +101,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
-            statusIs 303
+            statusIs 302
             get' "/"
             bodyContains "You are logged in as abc"
 
@@ -115,7 +115,7 @@ newAccountSpecs =
             post'"/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
                 addNonce
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "A password reset email has been sent to your email address"
@@ -149,7 +149,7 @@ newAccountSpecs =
                           [] -> error "Unable to find set password key"
                           element:_ -> return $ head $ attribute "value" $ parseHTML element
                 addPostParam "f3" key
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "Password updated"
@@ -162,7 +162,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "www"
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"

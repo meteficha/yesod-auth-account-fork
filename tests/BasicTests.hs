@@ -20,7 +20,7 @@ basicSpecs =
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
 
-            statusIs 303
+            statusIs 302
             get' "/auth/login"
             statusIs 200
             bodyContains "Invalid username/password combination"
@@ -40,21 +40,21 @@ basicSpecs =
                 byLabel "Username" "abc"
                 addNonce
 
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "Invalid username"
 
         yit "verify page returns an error" $ do
             get' "/auth/page/account/verify/abc/xxxxxx"
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
 
         yit "new password returns an error" $ do
             get' "/auth/page/account/newpassword/abc/xxxxxx"
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
@@ -67,7 +67,7 @@ basicSpecs =
                 addPostParam "f4" "xxx"
                 addPostParam "f5" "xxx"
 
-            statusIs 303
+            statusIs 302
             get' "/"
             statusIs 200
             bodyContains "As a protection against cross-site"
