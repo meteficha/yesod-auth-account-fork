@@ -166,3 +166,42 @@ newAccountSpecs =
             get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
+
+        yit "works with accounts with period" $ do
+            get' "/auth/page/account/newaccount"
+            statusIs 200
+
+            post' "/auth/page/account/newaccount" $ do
+                addNonce
+                byLabel "Username" "x.y"
+                byLabel "Email" "xy@example.com"
+                byLabel "Password" "hunter2"
+                byLabel "Confirm" "hunter2"
+
+            statusIs 302
+            get' "/"
+            statusIs 200
+            bodyContains "A confirmation e-mail has been sent to xy@example.com"
+
+            (username, email, verify) <- lastVerifyEmail
+            assertEqual "username" username "x.y"
+            assertEqual "email" email "xy@example.com"
+
+            get' verify
+            statusIs 302
+            get' "/"
+            statusIs 200
+            bodyContains "You are logged in as x.y"
+
+            post $ AuthR LogoutR
+            statusIs 302
+            get' "/"
+            statusIs 200
+
+            get' "/auth/login"
+            post'"/auth/page/account/login" $ do
+                byLabel "Username" "x.y"
+                byLabel "Password" "hunter2"
+            statusIs 302
+            get' "/"
+            bodyContains "You are logged in as x.y"
