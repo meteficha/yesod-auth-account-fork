@@ -395,12 +395,11 @@ data NewAccountData = NewAccountData {
 -- form into a larger form where you prompt for more information during account
 -- creation.  In this case, the NewAccountData should be passed to 'createNewAccount'
 -- from inside 'postNewAccountR'.
-newAccountForm :: (YesodAuth master
-                  , RenderMessage master FormMessage
+newAccountForm :: (YesodAuthAccount db master
                   , MonadHandler m
                   , HandlerSite m ~ master
                   ) => AForm m NewAccountData
-newAccountForm = NewAccountData <$> areq textField userSettings Nothing
+newAccountForm = NewAccountData <$> areq (checkM checkValidUsername textField) userSettings Nothing
                                 <*> areq emailField emailSettings Nothing
                                 <*> areq passwordField pwdSettings1 Nothing
                                 <*> areq passwordField pwdSettings2 Nothing
@@ -410,7 +409,7 @@ newAccountForm = NewAccountData <$> areq textField userSettings Nothing
           pwdSettings2  = FieldSettings (SomeMessage Msg.ConfirmPass) Nothing Nothing Nothing []
 
 -- | A default rendering of the 'newAccountForm' using renderDivs.
-newAccountWidget :: (YesodAuth master, RenderMessage master FormMessage) => (Route Auth -> Route master) -> WidgetT master IO ()
+newAccountWidget :: YesodAuthAccount db master => (Route Auth -> Route master) -> WidgetT master IO ()
 newAccountWidget tm = do
     ((_,widget), enctype) <- liftHandlerT $ runFormPost $ renderDivs newAccountForm
     [whamlet|
