@@ -4,3 +4,4 @@ dist/
 client_session_key.aes
 test.db3
 cabal.sandbox.config
+.cabal-sandbox/
