@@ -931,7 +931,7 @@ data PersistFuncs master user = PersistFuncs {
 
 -- | A newtype which when using persistent is an instance of 'AccountDB'.
 newtype AccountPersistDB master user a = AccountPersistDB (ReaderT (PersistFuncs master user) (HandlerT master IO) a)
-    deriving (Monad, MonadIO)
+    deriving (Monad, MonadIO, Functor, Applicative)
 
 instance (Yesod master, PersistUserCredentials user) => AccountDB (AccountPersistDB master user) where
     type UserAccount (AccountPersistDB master user) = P.Entity user
