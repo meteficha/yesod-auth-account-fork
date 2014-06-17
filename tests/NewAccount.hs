@@ -1,10 +1,25 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP, OverloadedStrings #-}
 module NewAccount (newAccountSpecs) where
 
+import Data.Monoid
 import Yesod.Auth
 import Yesod.Test
 import Foundation
 import Text.XML.Cursor (attribute)
+import qualified Data.Text as T
+
+-- In 9f379bc219bd1fdf008e2c179b03e98a05b36401 (which went into yesod-form-1.3.9)
+-- the numbering of fields was changed.  We normally wouldn't care because fields
+-- can be set via 'byLabel', but hidden fields have no label so we must use the id
+-- directly. We temporarily support both versions of yesod form with the following.
+f1, f2 :: T.Text
+#if MIN_VERSION_yesod_form(1,3,9)
+f1 = "f1"
+f2 = "f2"
+#else
+f1 = "f2"
+f2 = "f3"
+#endif
 
 newAccountSpecs :: YesodSpec MyApp
 newAccountSpecs =
@@ -73,7 +88,7 @@ newAccountSpecs =
             -- resend verify email
             post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
-                addPostParam "f2" "abc" -- username is also a hidden field
+                addPostParam f1 "abc" -- username is also a hidden field
             statusIs 302
             get' "/"
             bodyContains "A confirmation e-mail has been sent to test@example.com"
@@ -131,24 +146,24 @@ newAccountSpecs =
                 addNonce
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
-                addPostParam "f2" "abc"
-                addPostParam "f3" "qqqqqqqqqqqqqq"
+                addPostParam f1 "abc"
+                addPostParam f2 "qqqqqqqqqqqqqq"
             statusIs 403
             bodyContains "Invalid key"
 
             -- good key
             get' newpwd
             statusIs 200
-            matches <- htmlQuery "input[name=f3][type=hidden][value]"
+            matches <- htmlQuery $ "input[name=" <> f2 <> "][type=hidden][value]"
             post'"/auth/page/account/setpassword" $ do
                 addNonce
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
-                addPostParam "f2" "abc"
+                addPostParam f1 "abc"
                 key <- case matches of
                           [] -> error "Unable to find set password key"
                           element:_ -> return $ head $ attribute "value" $ parseHTML element
-                addPostParam "f3" key
+                addPostParam f2 key
             statusIs 302
             get' "/"
             statusIs 200
