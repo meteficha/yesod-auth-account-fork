@@ -44,8 +44,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 --   also create an instance of 'AccountDB'.
 --
 -- * You may use a user datatype created by persistent, in which case you can make the datatype
---   an instance of 'PersistUserCredentials' instead of 'UserCredentials'.  In this case, 
+--   an instance of 'PersistUserCredentials' instead of 'UserCredentials'.  In this case,
 --   'AccountPersistDB' from this module already implements the 'AccountDB' interface for you.
+--   Currently the persistent option requires both an unique username and email.
 --
 -- * Make your master site an instance of 'AccountSendEmail'.  By default, this class
 --   just logs a message so during development this class requires no implementation.
@@ -112,6 +113,7 @@ module Yesod.Auth.Account(
 import Control.Applicative
 import Control.Monad.Reader hiding (lift)
 import Data.Char (isAlphaNum)
+import Data.Monoid ((<>))
 import System.Random (newStdGen, randoms)
 import qualified Crypto.PasswordStore as PS
 import qualified Data.ByteString as B
@@ -119,6 +121,7 @@ import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.Persist as P
+import Text.Email.Validate
 
 import Yesod.Core
 import Yesod.Form
@@ -126,8 +129,10 @@ import Yesod.Auth
 import Yesod.Persist hiding (get, replace, insertKey, Entity, entityVal)
 import qualified Yesod.Auth.Message as Msg
 
--- | Each user is uniquely identified by a username.
+-- | Each user is uniquely identified by a username ...
 type Username = T.Text
+-- | And email (for now just in the Persistent backend).
+type Email = T.Text
 
 -- | The account authentication plugin.  Here is a complete example using persistent.
 --
@@ -149,6 +154,7 @@ type Username = T.Text
 -- >    UniqueUsername username
 -- >    password ByteString
 -- >    emailAddress Text
+-- >    UniqueEmailAddress emailAddress
 -- >    verified Bool
 -- >    verifyKey Text
 -- >    resetPasswordKey Text
@@ -163,6 +169,7 @@ type Username = T.Text
 -- >    userEmailVerifyKeyF = UserVerifyKey
 -- >    userResetPwdKeyF = UserResetPasswordKey
 -- >    uniqueUsername = UniqueUsername
+-- >    uniqueEmailaddress = UniqueEmailAddress
 -- >
 -- >    userCreate name email key pwd = User name pwd email False key ""
 -- >
@@ -268,9 +275,12 @@ setPasswordR = PluginR "account" ["setpassword"]
 
 -- | TODO: move these into Yesod.Auth.Message
 data AccountMsg = MsgUsername
+                | MsgLoginName
                 | MsgForgotPassword
                 | MsgInvalidUsername
+                | MsgInvalidEmail'
                 | MsgUsernameExists T.Text
+                | MsgEmailExists T.Text
                 | MsgResendVerifyEmail
                 | MsgResetPwdEmailSent
                 | MsgEmailVerified
@@ -278,10 +288,14 @@ data AccountMsg = MsgUsername
 
 instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgUsername = "Username"
+    renderMessage _ _ MsgLoginName = "Username or email"
     renderMessage _ _ MsgForgotPassword = "Forgot password?"
     renderMessage _ _ MsgInvalidUsername = "Invalid username"
+    renderMessage _ _ MsgInvalidEmail' = "Invalid email"
     renderMessage _ _ (MsgUsernameExists u) =
         T.concat ["The username ", u, " already exists.  Please choose an alternate username."]
+    renderMessage _ _ (MsgEmailExists u) =
+        T.concat ["The email ", u, " already exists.  Please consider a password reset."]
     renderMessage _ _ MsgResendVerifyEmail = "Resend verification email"
     renderMessage _ _ MsgResetPwdEmailSent = "A password reset email has been sent to your email address."
     renderMessage _ _ MsgEmailVerified = "Your email has been verified."
@@ -303,9 +317,9 @@ data LoginData = LoginData {
 -- posted to 'loginFormPostTargetR'.
 loginForm :: (MonadHandler m, YesodAuthAccount db master, HandlerSite m ~ master)
           => AForm m LoginData
-loginForm = LoginData <$> areq (checkM checkValidUsername textField) userSettings Nothing
+loginForm = LoginData <$> areq (checkM checkValidLogin textField) userSettings Nothing
                       <*> areq passwordField pwdSettings Nothing
-    where userSettings = FieldSettings (SomeMessage MsgUsername) Nothing (Just "username") Nothing []
+    where userSettings = FieldSettings (SomeMessage MsgLoginName) Nothing (Just "username") Nothing []
           pwdSettings  = FieldSettings (SomeMessage Msg.Password) Nothing (Just "password") Nothing []
 
 -- | A default rendering of 'loginForm' using renderDivs.
@@ -400,7 +414,7 @@ newAccountForm :: (YesodAuthAccount db master
                   , HandlerSite m ~ master
                   ) => AForm m NewAccountData
 newAccountForm = NewAccountData <$> areq (checkM checkValidUsername textField) userSettings Nothing
-                                <*> areq emailField emailSettings Nothing
+                                <*> areq (checkM checkValidEmail emailField) emailSettings Nothing
                                 <*> areq passwordField pwdSettings1 Nothing
                                 <*> areq passwordField pwdSettings2 Nothing
     where userSettings  = FieldSettings (SomeMessage MsgUsername) Nothing Nothing Nothing []
@@ -435,6 +449,11 @@ createNewAccount (NewAccountData u email pwd _) tm = do
                      redirect $ tm newAccountR
         Nothing -> return ()
 
+    muser' <- runAccountDB $ loadUser email
+    case muser' of
+        Just _ -> do setMessageI $ MsgEmailExists email
+                     redirect $ tm resetPasswordR
+        Nothing -> return ()
     key <- newVerifyKey
     hashed <- hashPassword pwd
 
@@ -539,7 +558,7 @@ resetPasswordForm :: (RenderMessage master FormMessage
                      , HandlerSite m ~ master
                      ) => AForm m Username
 resetPasswordForm = areq textField userSettings Nothing
-    where userSettings = FieldSettings (SomeMessage MsgUsername) Nothing (Just "username") Nothing []
+    where userSettings = FieldSettings (SomeMessage MsgLoginName) Nothing (Just "username") Nothing []
 
 -- | A default rendering of 'resetPasswordForm'.
 resetPasswordWidget :: (YesodAuth master, RenderMessage master FormMessage)
@@ -664,10 +683,11 @@ postSetPasswordR = do
 --   You must make a data type that is either an instance of this class or of
 --   'PersistUserCredentials', depending on if you are using persistent or not.
 --
---   Users are uniquely identified by their username, and for each user we must store the email,
---   the verify status, a hashed user password, and a reset password key.  The format for the
---   hashed password is the format from "Crypto.PasswordStore".  If the email has been verified
---   and no password reset is in progress, the relevent keys should be the empty string.
+--   Users are uniquely identified by their username or their email, and for each user we must
+--   store the email, the verify status, a hashed user password, and a reset password key.
+--   The format for the hashed password is the format from "Crypto.PasswordStore".
+--   If the email has been verified and no password reset is in progress, the relevent keys
+--   should be the empty string.
 class UserCredentials u where
     username           :: u -> Username
     userPasswordHash   :: u -> B.ByteString -- ^ see "Crypto.PasswordStore" for the format
@@ -688,6 +708,7 @@ class PersistUserCredentials u where
     userEmailVerifyKeyF :: P.EntityField u T.Text
     userResetPwdKeyF    :: P.EntityField u T.Text
     uniqueUsername      :: T.Text -> P.Unique u
+    uniqueEmailaddress  :: T.Text -> P.Unique u
 
     -- | Creates a new user for use during 'addNewUser'.  The starting reset password
     -- key should be the empty string.
@@ -714,7 +735,7 @@ class AccountDB m where
     -- | The data type which stores the user.  Must be an instance of 'UserCredentials'.
     type UserAccount m
 
-    -- | Load a user by username
+    -- | Load a user by username or email
     loadUser :: Username -> m (Maybe (UserAccount m))
 
     -- | Create new account.  The password reset key should be added as an empty string.
@@ -814,6 +835,29 @@ class (YesodAuth master
         mr <- getMessageRender
         return $ Left $ mr MsgInvalidUsername
 
+    checkValidEmail :: (MonadHandler m, HandlerSite m ~ master)
+                    => Email -> m (Either T.Text Email)
+    checkValidEmail u = do
+        mr <- getMessageRender
+        return . either (Left . (\e -> mr MsgInvalidEmail' <> ": " <> T.pack e))
+                        (Right . TE.decodeUtf8 . toByteString)
+                      . validate
+                      $ TE.encodeUtf8 u
+
+    -- | A form validator for valid usernames or emails during login.
+    --
+    -- By default this allows usernames made up of 'isAlphaNum', plus '@' and '.'.
+    -- You can also ignore this validation and instead validate in 'addNewUser',
+    -- but validating here allows the validation to occur before database activity
+    -- (checking existing username) and before random salt creation (requires IO).
+    checkValidLogin :: (MonadHandler m, HandlerSite m ~ master)
+                    => Username -> m (Either T.Text Username)
+    checkValidLogin u = do
+      validUser <- checkValidUsername u
+      validEmail<- checkValidEmail u
+      return $ case validUser of
+        Left _ -> validEmail
+        Right _ -> validUser
     -- | What to do when the user logs in and the email has not yet been verified.
     --              
     -- By default, this displays a message and contains 'resendVerifyEmailForm', allowing
@@ -975,7 +1019,9 @@ runAccountPersistDB :: ( Yesod master
                        => AccountPersistDB master user a -> HandlerT master IO a
 runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs
     where funcs = PersistFuncs {
-                      pGet = runDB . P.getBy . uniqueUsername
+                      pGet = \u -> runDB $ do
+                          byUser <- P.getBy . uniqueUsername $ u
+                          maybe    (P.getBy . uniqueEmailaddress $ u) (return . Just) byUser
                     , pInsert = \name u -> do mentity <- runDB $ P.insertBy u
                                               mr <- getMessageRender
                                               case mentity of
