@@ -85,6 +85,16 @@ newAccountSpecs =
             statusIs 200
             bodyContains "Your email has not yet been verified"
 
+            -- valid login with email
+            get' "/auth/login"
+            statusIs 200
+            post'"/auth/page/account/login" $ do
+                byLabel "Username" "test@example.com"
+                byLabel "Password" "xxx"
+            statusIs 200
+            bodyContains "Your email has not yet been verified"
+
+
             -- resend verify email
             post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
@@ -122,6 +132,19 @@ newAccountSpecs =
 
             -- logout
             post $ AuthR LogoutR
+
+            -- valid login with email
+            get' "/auth/login"
+            post'"/auth/page/account/login" $ do
+                byLabel "Username" "test@example.com"
+                byLabel "Password" "xxx"
+            statusIs 302
+            get' "/"
+            bodyContains "You are logged in as abc"
+
+            -- logout
+            post $ AuthR LogoutR
+
 
             -- reset password
             get' "/auth/page/account/resetpassword"
