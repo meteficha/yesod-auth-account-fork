@@ -20,6 +20,7 @@ User
     UniqueUsername username
     password ByteString
     emailAddress Text
+    UniqueEmailAddress emailAddress
     verified Bool
     verifyKey Text
     resetPasswordKey Text
@@ -34,6 +35,7 @@ instance PersistUserCredentials User where
     userEmailVerifyKeyF = UserVerifyKey
     userResetPwdKeyF = UserResetPasswordKey
     uniqueUsername = UniqueUsername
+    uniqueEmailaddress = UniqueEmailAddress
 
     userCreate name email key pwd = User name pwd email False key ""
 
