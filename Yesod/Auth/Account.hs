@@ -84,6 +84,7 @@ module Yesod.Auth.Account(
     -- * Password Reset
     -- $passwordreset
     , newPasswordR
+    , newPasswordLoggedR
     , resetPasswordForm
     , resetPasswordWidget
     , NewPasswordData(..)
@@ -114,6 +115,8 @@ import Control.Applicative
 import Control.Monad.Reader hiding (lift)
 import Data.Char (isAlphaNum)
 import Data.Monoid ((<>))
+import Data.Proxy (Proxy(..))
+import Data.Maybe
 import System.Random (newStdGen, randoms)
 import qualified Crypto.PasswordStore as PS
 import qualified Data.ByteString as B
@@ -205,6 +208,7 @@ type Email = T.Text
 -- >
 -- >instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
 -- >    runAccountDB = runAccountPersistDB
+-- >    getTextId _ = id
 -- >
 -- >getHomeR :: Handler Html
 -- >getHomeR = do
@@ -232,6 +236,7 @@ accountPlugin = AuthPlugin "account" dispatch loginWidget
           dispatch "POST" ["resetpassword"] = postResetPasswordR >>= sendResponse
           dispatch "GET"  ["verify", u, k] = getVerifyR u k >>= sendResponse
           dispatch "GET"  ["newpassword", u, k] = getNewPasswordR u k >>= sendResponse
+          dispatch "GET"  ["newpasswordlgd"] = getNewPasswordLoggedR >>= sendResponse
           dispatch "POST" ["setpassword"] = postSetPasswordR >>= sendResponse
           dispatch "POST" ["resendverifyemail"] = postResendVerifyEmailR >>= sendResponse
           dispatch _ _ = notFound
@@ -269,6 +274,9 @@ newPasswordR :: Username
              -> AuthRoute
 newPasswordR u k = PluginR "account" ["newpassword", u, k]
 
+-- | Choose a new password while logged in
+newPasswordLoggedR :: AuthRoute
+newPasswordLoggedR = PluginR "account" ["newpasswordlgd"]
 -- | The POST target for reseting the password
 setPasswordR :: AuthRoute
 setPasswordR = PluginR "account" ["setpassword"]
@@ -278,6 +286,7 @@ data AccountMsg = MsgUsername
                 | MsgLoginName
                 | MsgForgotPassword
                 | MsgInvalidUsername
+                | MsgInvalidPassword
                 | MsgInvalidEmail'
                 | MsgUsernameExists T.Text
                 | MsgEmailExists T.Text
@@ -285,6 +294,7 @@ data AccountMsg = MsgUsername
                 | MsgResetPwdEmailSent
                 | MsgEmailVerified
                 | MsgEmailUnverified
+                | MsgCurrentPassword
 
 instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgUsername = "Username"
@@ -292,6 +302,7 @@ instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgForgotPassword = "Forgot password?"
     renderMessage _ _ MsgInvalidUsername = "Invalid username"
     renderMessage _ _ MsgInvalidEmail' = "Invalid email"
+    renderMessage _ _ MsgInvalidPassword = "You must provide your current password"
     renderMessage _ _ (MsgUsernameExists u) =
         T.concat ["The username ", u, " already exists.  Please choose an alternate username."]
     renderMessage _ _ (MsgEmailExists u) =
@@ -300,6 +311,7 @@ instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgResetPwdEmailSent = "A password reset email has been sent to your email address."
     renderMessage _ _ MsgEmailVerified = "Your email has been verified."
     renderMessage _ _ MsgEmailUnverified = "Your email has not yet been verified."
+    renderMessage _ _ MsgCurrentPassword = "Please fill in your current password"
 
 
 ---------------------------------------------------------------------------------------------------
@@ -602,28 +614,41 @@ postResetPasswordR = do
 -- | The data for setting a new password.
 data NewPasswordData = NewPasswordData {
       newPasswordUser :: Username
-    , newPasswordKey  :: T.Text
+    , newPasswordKey  :: Maybe T.Text -- ^ Holds the verification key sent by email
+    , newPasswordOld  :: Maybe T.Text -- ^ Alternatively, will hold the current password for creds validation
     , newPasswordPwd1 :: T.Text
     , newPasswordPwd2 :: T.Text
 } deriving Show
 
--- | The form for setting a new password. It contains hidden fields for the username and key and prompts
--- for the passwords.  This form should be posted to 'setPasswordR'.
+-- | The form for setting a new password. It contains hidden fields for the username and key,
+-- and optionally a field for the user to input its current password, besides the new passwords.
+-- This form should be posted to 'setPasswordR'.
 newPasswordForm :: (YesodAuth master, RenderMessage master FormMessage, MonadHandler m, HandlerSite m ~ master)
-                => Username 
-                -> T.Text -- ^ key
+                => Username
+                -> Maybe T.Text -- ^ key
                 -> AForm m NewPasswordData
 newPasswordForm u k = NewPasswordData <$> areq hiddenField "" (Just u)
-                                      <*> areq hiddenField "" (Just k)
+                                      <*> aopt hiddenField "" (Just k)
+                                      -- The presence of the optional key will dictate if we show the
+                                      -- old password field
+                                      <*> (if isNothing k then aopt passwordField newPassword  Nothing
+                                                          else aopt hiddenField "" Nothing)
                                       <*> areq passwordField pwdSettings1 Nothing
                                       <*> areq passwordField pwdSettings2 Nothing
     where pwdSettings1 = FieldSettings (SomeMessage Msg.NewPass) Nothing Nothing Nothing []
           pwdSettings2 = FieldSettings (SomeMessage Msg.ConfirmPass) Nothing Nothing Nothing []
+          newPassword  = FieldSettings (SomeMessage MsgCurrentPassword) Nothing Nothing Nothing []
 
 -- | A default rendering of 'newPasswordForm'.
-newPasswordWidget :: YesodAuthAccount db master => UserAccount db -> (Route Auth -> Route master) -> WidgetT master IO ()
-newPasswordWidget user tm = do
-    let key = userResetPwdKey user
+newPasswordWidget :: YesodAuthAccount db master
+    => Bool            -- ^ Has verification key (True) or should it present the actual password field(False)?
+    ->UserAccount db
+    -> (Route Auth -> Route master)
+    -> WidgetT master IO ()
+newPasswordWidget withKey user tm = do
+    let key = if withKey
+                then Just $ userResetPwdKey user
+                else Nothing
     ((_,widget), enctype) <- liftHandlerT $ runFormPost $ renderDivs (newPasswordForm (username user) key)
     [whamlet|
 <div .newpassDiv>
@@ -640,22 +665,40 @@ getNewPasswordR uname k = do
     muser <- lift $ runAccountDB $ loadUser uname
     case muser of
         Just user | userResetPwdKey user /= "" && userResetPwdKey user == k ->
-            setPasswordHandler user
+            setPasswordHandler True user
 
         _ -> do lift $ setMessageI Msg.InvalidKey
                 redirect LoginR
+-- | Configure a new password while logged in
+getNewPasswordLoggedR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
+getNewPasswordLoggedR = do
+    allow <- allowPasswordReset <$> lift getYesod
+    unless allow notFound
+    uname <- loggedInUser
+    muser <- lift $ runAccountDB $ loadUser uname
+    case muser of
+        Just user -> runIfLogged (setPasswordHandler False user)
+        _ -> notAuthenticated
 
 postSetPasswordR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) ()
 postSetPasswordR = do
     allow <- allowPasswordReset <$> lift getYesod
     unless allow notFound
-    ((result,_), _) <- lift $ runFormPost $ renderDivs (newPasswordForm "" "")
+    ((result,_), _) <- lift $ runFormPost $ renderDivs (newPasswordForm "" Nothing)
     mnew <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
                 FormFailure msg -> return $ Left msg
-                FormSuccess d | newPasswordPwd1 d == newPasswordPwd2 d -> return $ Right d
+                FormSuccess d | newPasswordPwd1 d == newPasswordPwd2 d
+                                && (   isJust (newPasswordOld d)
+                                    || isJust (newPasswordKey d)) -> return $ Right d
                 FormSuccess d -> do lift $ setMessageI Msg.PassMismatch
-                                    redirect $ newPasswordR (newPasswordUser d) (newPasswordKey d)
+                                    handleNullFields
+                      where
+                        handleNullFields | null (catMaybes [newPasswordOld d, newPasswordKey d]) =
+                                              invalidArgs ["Form is incorrect"]
+                                         | isNothing (newPasswordKey d) =  redirect $ newPasswordLoggedR
+                                         | otherwise =  redirect $ newPasswordR (newPasswordUser d)
+                                                                   (fromMaybe "" (newPasswordKey d))
 
     case mnew of
         Left errs -> do
@@ -667,9 +710,16 @@ postSetPasswordR = do
                         -- username is a hidden field so it should be correct.  No need to set a message and redirect.
                         Nothing -> permissionDenied "Invalid username"
                         Just user -> do
-                              -- the key is a hidden field, no need to set a message and redirect.
-                              when (userResetPwdKey user == "") $ permissionDenied "Invalid key"
-                              when (newPasswordKey d /= userResetPwdKey user) $ permissionDenied "Invalid key"
+                              case newPasswordOld d of
+                                -- If no old password, we'll assume this is a key validated operation
+                                Nothing -> do
+                                  -- the key is a hidden field, no need to set a message and redirect.
+                                  when (userResetPwdKey user == "") $ permissionDenied "Invalid key"
+                                  when (maybe True ((/=) (userResetPwdKey user)) (newPasswordKey d))
+                                      $ permissionDenied "Invalid key"
+                                Just oldPassword ->
+                                  unless (verifyPassword oldPassword (userPasswordHash user))
+                                         (lift (setMessageI  MsgInvalidPassword) >> redirect newPasswordLoggedR )
 
                               hashed <- hashPassword (newPasswordPwd1 d)
                               lift $ runAccountDB $ setNewPassword user hashed
@@ -923,14 +973,38 @@ class (YesodAuth master
 
     -- | The page which allows the user to set a new password.
     --
-    -- This is called only when the email key has been verified as correct. By default, it embeds
-    -- 'newPasswordWidget'.
-    setPasswordHandler :: UserAccount db -> HandlerT Auth (HandlerT master IO) Html
-    setPasswordHandler u = do
+    -- This is called only when the email key has been verified as correct (True),
+    -- or when the user is logged in (False). By default, it embeds 'newPasswordWidget'.
+    setPasswordHandler :: Bool -> UserAccount db -> HandlerT Auth (HandlerT master IO) Html
+    setPasswordHandler withKey u = do
         tm <- getRouteToParent
         lift $ defaultLayout $ do
             setTitleI Msg.SetPassTitle
-            newPasswordWidget u tm
+            newPasswordWidget withKey u tm
+
+    -- Get text username from an AuthId
+    getTextId :: Proxy master -> AuthId master -> T.Text
+
+-- | True if user is currently logged in.
+-- Only looks in session data, not if user is still present in database.
+-- (See https://github.com/yesodweb/yesod/issues/486 )
+-- Preferably, this should use requireAuthId instead, but my type foo is not enough for that...
+-- Use runIfLogged instead
+loggedInUser :: (YesodAuthAccount db master) => HandlerT Auth (HandlerT master IO) T.Text
+loggedInUser = do
+  y <- lift getYesod
+  getTextId (return y) <$> lift requireAuthId
+
+-- | Runs an action if the user is properly logged in
+-- (cookie is set, user is on database and email is verified)
+runIfLogged :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) b -> HandlerT Auth (HandlerT master IO) b
+runIfLogged action = do
+    muser <- lift . runAccountDB . loadUser =<< loggedInUser
+    case muser of
+      Just u-> if userEmailVerified u
+        then action
+        else redirect LoginR
+      Nothing -> redirect LoginR
 
 -- | Salt and hash a password.
 hashPassword :: MonadIO m => T.Text -> m B.ByteString
