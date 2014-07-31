@@ -90,7 +90,7 @@ instance AccountSendEmail MyApp where
 
 instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
     runAccountDB = runAccountPersistDB
-    getTextId _ = id
+    getTextId _ = return
 
 getHomeR :: Handler Html
 getHomeR = do

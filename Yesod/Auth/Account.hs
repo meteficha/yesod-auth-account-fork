@@ -301,8 +301,8 @@ instance RenderMessage m AccountMsg where
     renderMessage _ _ MsgLoginName = "Username or email"
     renderMessage _ _ MsgForgotPassword = "Forgot password?"
     renderMessage _ _ MsgInvalidUsername = "Invalid username"
-    renderMessage _ _ MsgInvalidEmail' = "Invalid email"
     renderMessage _ _ MsgInvalidPassword = "You must provide your current password"
+    renderMessage _ _ MsgInvalidEmail' = "Invalid email"
     renderMessage _ _ (MsgUsernameExists u) =
         T.concat ["The username ", u, " already exists.  Please choose an alternate username."]
     renderMessage _ _ (MsgEmailExists u) =
@@ -983,7 +983,8 @@ class (YesodAuth master
             newPasswordWidget withKey u tm
 
     -- Get text username from an AuthId
-    getTextId :: Proxy master -> AuthId master -> T.Text
+    getTextId :: Proxy master -> AuthId master -> HandlerT Auth (HandlerT master IO) T.Text
+
 
 -- | True if user is currently logged in.
 -- Only looks in session data, not if user is still present in database.
@@ -993,7 +994,7 @@ class (YesodAuth master
 loggedInUser :: (YesodAuthAccount db master) => HandlerT Auth (HandlerT master IO) T.Text
 loggedInUser = do
   y <- lift getYesod
-  getTextId (return y) <$> lift requireAuthId
+  getTextId (return y) =<< lift requireAuthId
 
 -- | Runs an action if the user is properly logged in
 -- (cookie is set, user is on database and email is verified)
