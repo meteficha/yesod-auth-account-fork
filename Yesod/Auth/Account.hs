@@ -63,7 +63,7 @@ module Yesod.Auth.Account(
     , newAccountR
     , resetPasswordR
     , accountPlugin
-    
+
     -- * Login
     , LoginData(..)
     , loginForm
@@ -208,7 +208,7 @@ type Email = T.Text
 -- >
 -- >instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
 -- >    runAccountDB = runAccountPersistDB
--- >    getTextId _ = id
+-- >    getTextId _ = return
 -- >
 -- >getHomeR :: Handler Html
 -- >getHomeR = do
@@ -259,7 +259,7 @@ resetPasswordR :: AuthRoute
 resetPasswordR = PluginR "account" ["resetpassword"]
 
 -- | The URL sent in an email for email verification
-verifyR :: Username 
+verifyR :: Username
         -> T.Text -- ^ The verification key
         -> AuthRoute
 verifyR u k = PluginR "account" ["verify", u, k]
@@ -366,7 +366,7 @@ postLoginR = do
                             if verifyPassword pwd (userPasswordHash u)
                                 then Right u
                                 else Left [mr Msg.InvalidUsernamePass]
-    
+
     case muser of
         Left errs -> do
             setMessage $ toHtml $ T.concat errs
@@ -486,7 +486,7 @@ getVerifyR uname k = do
     case muser of
         Nothing -> do lift $ setMessageI Msg.InvalidKey
                       redirect LoginR
-        Just user -> do when (    userEmailVerifyKey user == "" 
+        Just user -> do when (    userEmailVerifyKey user == ""
                                || userEmailVerifyKey user /= k
                                || userEmailVerified user
                              ) $ do
@@ -527,7 +527,7 @@ postResendVerifyEmailR = do
 
     case muser of
         -- The username is a hidden field so it should be correct.  No need to set a message or redirect.
-        Nothing -> invalidArgs ["Invalid username"] 
+        Nothing -> invalidArgs ["Invalid username"]
         Just u  -> do
             key <- newVerifyKey
             lift $ runAccountDB $ setVerifyKey u key
@@ -802,7 +802,7 @@ class AccountDB m where
     verifyAccount :: UserAccount m -> m ()
 
     -- | Change/set the users email verification key.
-    setVerifyKey :: UserAccount m 
+    setVerifyKey :: UserAccount m
                  -> T.Text -- ^ the verification key
                  -> m ()
 
@@ -878,7 +878,7 @@ class (YesodAuth master
     -- this validation and instead validate in 'addNewUser', but validating here
     -- allows the validation to occur before database activity (checking existing
     -- username) and before random salt creation (requires IO).
-    checkValidUsername :: (MonadHandler m, HandlerSite m ~ master) 
+    checkValidUsername :: (MonadHandler m, HandlerSite m ~ master)
                        => Username -> m (Either T.Text Username)
     checkValidUsername u | T.all isAlphaNum u = return $ Right u
     checkValidUsername _ = do
@@ -909,7 +909,7 @@ class (YesodAuth master
         Left _ -> validEmail
         Right _ -> validUser
     -- | What to do when the user logs in and the email has not yet been verified.
-    --              
+    --
     -- By default, this displays a message and contains 'resendVerifyEmailForm', allowing
     -- the user to resend the verification email.  The handler is run inside the post
     -- handler for login, so you can call 'setCreds' to preform a successful login.
@@ -1090,7 +1090,7 @@ runAccountPersistDB :: ( Yesod master
                        , PersistMonadBackend (b (HandlerT master IO)) ~ P.PersistEntityBackend user
                        , P.PersistUnique (b (HandlerT master IO))
                        , P.PersistQuery (b (HandlerT master IO))
-                       ) 
+                       )
                        => AccountPersistDB master user a -> HandlerT master IO a
 runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs
     where funcs = PersistFuncs {
