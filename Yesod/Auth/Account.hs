@@ -194,7 +194,7 @@ type Username = T.Text
 -- >    authPlugins _ = [accountPlugin]
 -- >    authHttpManager _ = error "No manager needed"
 -- >    onLogin = return ()
--- >    maybeAuthId = lookupSession "_ID"
+-- >    maybeAuthId = lookupSession credsKey
 -- >
 -- >instance AccountSendEmail MyApp
 -- >
