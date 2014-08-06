@@ -112,10 +112,10 @@ module Yesod.Auth.Account(
 import Control.Applicative
 import Control.Monad.Reader hiding (lift)
 import Data.Char (isAlphaNum)
-import System.Random (newStdGen, randoms)
+import System.IO.Unsafe (unsafePerformIO)
 import qualified Crypto.PasswordStore as PS
+import qualified Crypto.Nonce as Nonce
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.Persist as P
@@ -899,12 +899,13 @@ verifyPassword :: T.Text       -- ^ password
                -> Bool
 verifyPassword pwd = PS.verifyPassword (TE.encodeUtf8 pwd)
 
+nonceGen :: Nonce.Generator
+nonceGen = unsafePerformIO Nonce.new
+{-# NOINLINE nonceGen #-}
+
 -- | Randomly create a new verification key.
 newVerifyKey :: MonadIO m => m T.Text
-newVerifyKey = do
-    g <- liftIO newStdGen
-    let bs = B.pack $ take 32 $ randoms g
-    return $ TE.decodeUtf8 $ B64.encode bs
+newVerifyKey = Nonce.nonce128urlT nonceGen
 
 ---------------------------------------------------------------------------------------------------
 
