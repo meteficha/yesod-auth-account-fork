@@ -8,3 +8,6 @@
       runAccountPersistDB had their context's updated with a constraint for
       `YesodAuthAccount db master`, which shouldn't be a problem.
 
+* Use the nonce package for generating the keys sent in the verification and reset
+  password emails.  The `nonce` package provides efficient and cryptographically secure
+  nonces.
