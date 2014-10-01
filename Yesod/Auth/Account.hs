@@ -133,7 +133,8 @@ import Yesod.Auth.Account.Message
 -- | Each user is uniquely identified by a username.
 type Username = T.Text
 
--- | The account authentication plugin.  Here is a complete example using persistent.
+-- | The account authentication plugin.  Here is a complete example using persistent 2.1
+-- and yesod 1.4.
 --
 -- >{-# LANGUAGE QuasiQuotes, TypeFamilies, GeneralizedNewtypeDeriving #-}
 -- >{-# LANGUAGE FlexibleContexts, FlexibleInstances, TemplateHaskell, OverloadedStrings #-}
@@ -183,7 +184,7 @@ type Username = T.Text
 -- >    renderMessage _ _ = defaultFormMessage
 -- >
 -- >instance YesodPersist MyApp where
--- >    type YesodPersistBackend MyApp = SqlPersistT
+-- >    type YesodPersistBackend MyApp = SqlBackend
 -- >    runDB action = do
 -- >        MyApp pool <- getYesod
 -- >        runSqlPool action pool
@@ -216,9 +217,9 @@ type Username = T.Text
 -- >|]
 -- >
 -- >main :: IO ()
--- >main = withSqlitePool "test.db3" 10 $ \pool -> do
--- >    runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
--- >    warp 3000 $ MyApp pool
+-- >main = runStderrLoggingT $ withSqlitePool "test.db3" 10 $ \pool -> do
+-- >    runSqlPool (runMigration migrateAll) pool
+-- >    liftIO $ warp 3000 $ MyApp pool
 --
 accountPlugin :: YesodAuthAccount db master => AuthPlugin master
 accountPlugin = AuthPlugin "account" dispatch loginWidget
@@ -961,9 +962,14 @@ runAccountPersistDB :: ( Yesod master
                        , P.PersistEntity user
                        , PersistUserCredentials user
                        , b ~ YesodPersistBackend master
+#if MIN_VERSION_persistent(2,1,0)
+                       , b ~ PersistEntityBackend user
+                       , PersistUnique b
+#else
                        , PersistMonadBackend (b (HandlerT master IO)) ~ P.PersistEntityBackend user
                        , P.PersistUnique (b (HandlerT master IO))
                        , P.PersistQuery (b (HandlerT master IO))
+#endif
                        , YesodAuthAccount db master
                        , db ~ AccountPersistDB master user
                        ) 
