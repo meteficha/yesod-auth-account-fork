@@ -12,6 +12,7 @@ import Control.Monad.Trans.Resource (runResourceT)
 
 import BasicTests
 import NewAccount
+import ChangePasswordLogged
 
 main :: IO ()
 main = withSqlitePool "test.db3" 10 $ \pool -> do
@@ -20,3 +21,4 @@ main = withSqlitePool "test.db3" 10 $ \pool -> do
           hspec $ yesodSpec (MyApp pool) $ do
               basicSpecs
               newAccountSpecs
+              changePasswordLoggedSpecs
