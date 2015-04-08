@@ -31,6 +31,8 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-} -- Only orphan instance is RenderMessage AccountMessage
 
 -- | An auth plugin for accounts. Each account consists of a username, email, and password.
 --
@@ -114,13 +116,13 @@ module Yesod.Auth.Account(
 import Control.Applicative
 import Control.Monad.Reader hiding (lift)
 import Data.Char (isAlphaNum)
+import Data.Maybe
 import Data.Monoid ((<>))
 import Data.Proxy (Proxy(..))
-import Data.Maybe
-import System.Random (newStdGen, randoms)
+import System.IO.Unsafe (unsafePerformIO)
 import qualified Crypto.PasswordStore as PS
+import qualified Crypto.Nonce as Nonce
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Base64.URL as B64
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Database.Persist as P
@@ -132,12 +134,15 @@ import Yesod.Auth
 import Yesod.Persist hiding (get, replace, insertKey, Entity, entityVal)
 import qualified Yesod.Auth.Message as Msg
 
--- | Each user is uniquely identified by a username ...
+import Yesod.Auth.Account.Message
+
+-- | Each user is uniquely identified by a username.
 type Username = T.Text
 -- | And email (for now just in the Persistent backend).
 type Email = T.Text
 
--- | The account authentication plugin.  Here is a complete example using persistent.
+-- | The account authentication plugin.  Here is a complete example using persistent 2.1
+-- and yesod 1.4.
 --
 -- >{-# LANGUAGE QuasiQuotes, TypeFamilies, GeneralizedNewtypeDeriving #-}
 -- >{-# LANGUAGE FlexibleContexts, FlexibleInstances, TemplateHaskell, OverloadedStrings #-}
@@ -189,7 +194,7 @@ type Email = T.Text
 -- >    renderMessage _ _ = defaultFormMessage
 -- >
 -- >instance YesodPersist MyApp where
--- >    type YesodPersistBackend MyApp = SqlPersistT
+-- >    type YesodPersistBackend MyApp = SqlBackend
 -- >    runDB action = do
 -- >        MyApp pool <- getYesod
 -- >        runSqlPool action pool
@@ -202,7 +207,7 @@ type Email = T.Text
 -- >    authPlugins _ = [accountPlugin]
 -- >    authHttpManager _ = error "No manager needed"
 -- >    onLogin = return ()
--- >    maybeAuthId = lookupSession "_ID"
+-- >    maybeAuthId = lookupSession credsKey
 -- >
 -- >instance AccountSendEmail MyApp
 -- >
@@ -223,9 +228,9 @@ type Email = T.Text
 -- >|]
 -- >
 -- >main :: IO ()
--- >main = withSqlitePool "test.db3" 10 $ \pool -> do
--- >    runStderrLoggingT $ runSqlPool (runMigration migrateAll) pool
--- >    warp 3000 $ MyApp pool
+-- >main = runStderrLoggingT $ withSqlitePool "test.db3" 10 $ \pool -> do
+-- >    runSqlPool (runMigration migrateAll) pool
+-- >    liftIO $ warp 3000 $ MyApp pool
 --
 accountPlugin :: YesodAuthAccount db master => AuthPlugin master
 accountPlugin = AuthPlugin "account" dispatch loginWidget
@@ -277,44 +282,14 @@ newPasswordR u k = PluginR "account" ["newpassword", u, k]
 -- | Choose a new password while logged in
 newPasswordLoggedR :: AuthRoute
 newPasswordLoggedR = PluginR "account" ["newpasswordlgd"]
+
 -- | The POST target for reseting the password
 setPasswordR :: AuthRoute
 setPasswordR = PluginR "account" ["setpassword"]
 
--- | TODO: move these into Yesod.Auth.Message
-data AccountMsg = MsgUsername
-                | MsgLoginName
-                | MsgForgotPassword
-                | MsgInvalidUsername
-                | MsgInvalidPassword
-                | MsgInvalidEmail'
-                | MsgUsernameExists T.Text
-                | MsgEmailExists T.Text
-                | MsgResendVerifyEmail
-                | MsgResetPwdEmailSent
-                | MsgEmailVerified
-                | MsgEmailUnverified
-                | MsgCurrentPassword
-
-instance RenderMessage m AccountMsg where
-    renderMessage _ _ MsgUsername = "Username"
-    renderMessage _ _ MsgLoginName = "Username or email"
-    renderMessage _ _ MsgForgotPassword = "Forgot password?"
-    renderMessage _ _ MsgInvalidUsername = "Invalid username"
-    renderMessage _ _ MsgInvalidPassword = "You must provide your current password"
-    renderMessage _ _ MsgInvalidEmail' = "Invalid email"
-    renderMessage _ _ (MsgUsernameExists u) =
-        T.concat ["The username ", u, " already exists.  Please choose an alternate username."]
-    renderMessage _ _ (MsgEmailExists u) =
-        T.concat ["The email ", u, " already exists.  Please consider a password reset."]
-    renderMessage _ _ MsgResendVerifyEmail = "Resend verification email"
-    renderMessage _ _ MsgResetPwdEmailSent = "A password reset email has been sent to your email address."
-    renderMessage _ _ MsgEmailVerified = "Your email has been verified."
-    renderMessage _ _ MsgEmailUnverified = "Your email has not yet been verified."
-    renderMessage _ _ MsgCurrentPassword = "Please fill in your current password"
-
 
 ---------------------------------------------------------------------------------------------------
+
 
 -- | The data collected in the login form.
 data LoginData = LoginData {
@@ -353,8 +328,8 @@ loginWidget tm = do
 
 postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
 postLoginR = do
-    ((result, _), _) <- lift $ runFormPostNoToken $ renderDivs loginForm
     mr <- lift getMessageRender
+    ((result, _), _) <- lift $ runFormPostNoToken $ renderDivs loginForm
     muser <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
                 FormFailure msg -> return $ Left msg
@@ -493,7 +468,7 @@ getVerifyR uname k = do
                             lift $ setMessageI Msg.InvalidKey
                             redirect LoginR
                         lift $ runAccountDB $ verifyAccount user
-                        setMessageI MsgEmailVerified
+                        lift $ setMessageI MsgEmailVerified
                         lift $ setCreds True $ Creds "account" uname []
 
 -- | A form to allow the user to request the email validation be resent.
@@ -507,7 +482,7 @@ resendVerifyEmailForm :: (RenderMessage master FormMessage
 resendVerifyEmailForm u = areq hiddenField "" $ Just u
 
 -- | A default rendering of 'resendVerifyEmailForm'
-resendVerifyEmailWidget :: RenderMessage master FormMessage => Username -> (Route Auth -> Route master) -> WidgetT master IO ()
+resendVerifyEmailWidget :: YesodAuthAccount db master => Username -> (Route Auth -> Route master) -> WidgetT master IO ()
 resendVerifyEmailWidget u tm = do
     ((_,widget), enctype) <- liftHandlerT $ runFormPost $ renderDivs $ resendVerifyEmailForm u
     [whamlet|
@@ -565,7 +540,7 @@ postResendVerifyEmailR = do
 -- | A form for the user to request that an email be sent to them to allow them to reset
 -- their password.  This form contains a field for the username (plus the CSRF token).
 -- The form should be posted to 'resetPasswordR'.
-resetPasswordForm :: (RenderMessage master FormMessage
+resetPasswordForm :: (YesodAuthAccount db master
                      , MonadHandler m
                      , HandlerSite m ~ master
                      ) => AForm m Username
@@ -573,7 +548,7 @@ resetPasswordForm = areq textField userSettings Nothing
     where userSettings = FieldSettings (SomeMessage MsgLoginName) Nothing (Just "username") Nothing []
 
 -- | A default rendering of 'resetPasswordForm'.
-resetPasswordWidget :: (YesodAuth master, RenderMessage master FormMessage)
+resetPasswordWidget :: YesodAuthAccount db master
                     => (Route Auth -> Route master) -> WidgetT master IO ()
 resetPasswordWidget tm = do
     ((_,widget), enctype) <- liftHandlerT $ runFormPost $ renderDivs resetPasswordForm
@@ -600,7 +575,7 @@ postResetPasswordR = do
             redirect LoginR
 
         Right Nothing -> do
-            setMessageI MsgInvalidUsername
+            lift $ setMessageI MsgInvalidUsername
             redirect resetPasswordR
 
         Right (Just u) -> do key <- newVerifyKey
@@ -608,7 +583,7 @@ postResetPasswordR = do
                              render <- getUrlRender
                              lift $ sendNewPasswordEmail (username u) (userEmail u) $ render $ newPasswordR (username u) key
                              -- Don't display the email in the message since anybody can request the resend.
-                             setMessageI MsgResetPwdEmailSent
+                             lift $ setMessageI MsgResetPwdEmailSent
                              redirect LoginR
 
 -- | The data for setting a new password.
@@ -623,7 +598,7 @@ data NewPasswordData = NewPasswordData {
 -- | The form for setting a new password. It contains hidden fields for the username and key,
 -- and optionally a field for the user to input its current password, besides the new passwords.
 -- This form should be posted to 'setPasswordR'.
-newPasswordForm :: (YesodAuth master, RenderMessage master FormMessage, MonadHandler m, HandlerSite m ~ master)
+newPasswordForm :: (YesodAuthAccount db master, MonadHandler m, HandlerSite m ~ master)
                 => Username
                 -> Maybe T.Text -- ^ key
                 -> AForm m NewPasswordData
@@ -669,6 +644,7 @@ getNewPasswordR uname k = do
 
         _ -> do lift $ setMessageI Msg.InvalidKey
                 redirect LoginR
+
 -- | Configure a new password while logged in
 getNewPasswordLoggedR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
 getNewPasswordLoggedR = do
@@ -985,6 +961,14 @@ class (YesodAuth master
     -- Get text username from an AuthId
     getTextId :: Proxy master -> AuthId master -> HandlerT Auth (HandlerT master IO) T.Text
 
+    -- | Used for i18n of 'AccountMsg', defaults to 'defaultAccountMsg'.  To support
+    -- multiple languages, you can implement this method using the various translations
+    -- from "Yesod.Auth.Account.Message".
+    renderAccountMessage :: master -> [T.Text] -> AccountMsg -> T.Text
+    renderAccountMessage _ _ = defaultAccountMsg
+
+instance YesodAuthAccount db master => RenderMessage master AccountMsg where
+    renderMessage = renderAccountMessage
 
 -- | True if user is currently logged in.
 -- Only looks in session data, not if user is still present in database.
@@ -1017,12 +1001,13 @@ verifyPassword :: T.Text       -- ^ password
                -> Bool
 verifyPassword pwd = PS.verifyPassword (TE.encodeUtf8 pwd)
 
+nonceGen :: Nonce.Generator
+nonceGen = unsafePerformIO Nonce.new
+{-# NOINLINE nonceGen #-}
+
 -- | Randomly create a new verification key.
 newVerifyKey :: MonadIO m => m T.Text
-newVerifyKey = do
-    g <- liftIO newStdGen
-    let bs = B.pack $ take 32 $ randoms g
-    return $ TE.decodeUtf8 $ B64.encode bs
+newVerifyKey = Nonce.nonce128urlT nonceGen
 
 ---------------------------------------------------------------------------------------------------
 
@@ -1087,9 +1072,16 @@ runAccountPersistDB :: ( Yesod master
                        , P.PersistEntity user
                        , PersistUserCredentials user
                        , b ~ YesodPersistBackend master
+#if MIN_VERSION_persistent(2,1,0)
+                       , b ~ PersistEntityBackend user
+                       , PersistUnique b
+#else
                        , PersistMonadBackend (b (HandlerT master IO)) ~ P.PersistEntityBackend user
                        , P.PersistUnique (b (HandlerT master IO))
                        , P.PersistQuery (b (HandlerT master IO))
+#endif
+                       , YesodAuthAccount db master
+                       , db ~ AccountPersistDB master user
                        )
                        => AccountPersistDB master user a -> HandlerT master IO a
 runAccountPersistDB (AccountPersistDB m) = runReaderT m funcs

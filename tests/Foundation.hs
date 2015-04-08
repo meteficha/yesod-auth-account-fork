@@ -1,4 +1,4 @@
-{-# LANGUAGE QuasiQuotes, TypeFamilies, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE CPP, QuasiQuotes, TypeFamilies, GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, TemplateHaskell, OverloadedStrings #-}
 {-# LANGUAGE GADTs, MultiParamTypeClasses, TypeSynonymInstances #-}
 
@@ -66,7 +66,11 @@ instance RenderMessage MyApp FormMessage where
     renderMessage _ _ = defaultFormMessage
 
 instance YesodPersist MyApp where
+#if MIN_VERSION_yesod(1,4,0)
+    type YesodPersistBackend MyApp = SqlBackend
+#else
     type YesodPersistBackend MyApp = SqlPersistT
+#endif
     runDB action = do
         MyApp pool <- getYesod
         runSqlPool action pool

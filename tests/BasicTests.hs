@@ -1,8 +1,15 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP, OverloadedStrings #-}
 module BasicTests (basicSpecs) where
 
 import Yesod.Test
 import Foundation
+
+redirectCode :: Int
+#if MIN_VERSION_yesod_test(1,4,0)
+redirectCode = 303
+#else
+redirectCode = 302
+#endif
 
 basicSpecs :: YesodSpec MyApp
 basicSpecs =
@@ -20,7 +27,7 @@ basicSpecs =
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/auth/login"
             statusIs 200
             bodyContains "Invalid username/password combination"
@@ -40,21 +47,21 @@ basicSpecs =
                 byLabel "Username" "abc"
                 addNonce
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Invalid username"
 
         yit "verify page returns an error" $ do
             get' "/auth/page/account/verify/abc/xxxxxx"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
 
         yit "new password returns an error" $ do
             get' "/auth/page/account/newpassword/abc/xxxxxx"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
@@ -67,7 +74,7 @@ basicSpecs =
                 addPostParam "f4" "xxx"
                 addPostParam "f5" "xxx"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "As a protection against cross-site"

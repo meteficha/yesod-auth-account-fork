@@ -8,6 +8,13 @@ import Foundation
 import Text.XML.Cursor (attribute)
 import qualified Data.Text as T
 
+redirectCode :: Int
+#if MIN_VERSION_yesod_test(1,4,0)
+redirectCode = 303
+#else
+redirectCode = 302
+#endif
+
 -- In 9f379bc219bd1fdf008e2c179b03e98a05b36401 (which went into yesod-form-1.3.9)
 -- the numbering of fields was changed.  We normally wouldn't care because fields
 -- can be set via 'byLabel', but hidden fields have no label so we must use the id
@@ -36,7 +43,7 @@ newAccountSpecs =
                 byLabel "Password" "xxx"
                 byLabel "Confirm" "yyy"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Passwords did not match"
@@ -52,7 +59,7 @@ newAccountSpecs =
                 byLabel "Password" "xxx"
                 byLabel "Confirm" "xxx"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "A confirmation e-mail has been sent to test@example.com"
@@ -62,7 +69,7 @@ newAccountSpecs =
             assertEqual "email" email "test@example.com"
 
             get' "/auth/page/account/verify/abc/zzzzzz"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "invalid verification key"
@@ -73,7 +80,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "yyy"
-            statusIs 302
+            statusIs redirectCode
             get' "/auth/login"
             statusIs 200
             bodyContains "Invalid username/password combination"
@@ -99,7 +106,7 @@ newAccountSpecs =
             post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
                 addPostParam f1 "abc" -- username is also a hidden field
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             bodyContains "A confirmation e-mail has been sent to test@example.com"
 
@@ -110,13 +117,13 @@ newAccountSpecs =
 
             -- verify email
             get' verify'
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
 
             post $ AuthR LogoutR
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Please visit the <a href=\"/auth/login\">Login page"
@@ -126,7 +133,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "xxx"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             bodyContains "You are logged in as abc"
 
@@ -153,7 +160,7 @@ newAccountSpecs =
             post'"/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
                 addNonce
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "A password reset email has been sent to your email address"
@@ -187,7 +194,7 @@ newAccountSpecs =
                           [] -> error "Unable to find set password key"
                           element:_ -> return $ head $ attribute "value" $ parseHTML element
                 addPostParam f2 key
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Password updated"
@@ -200,7 +207,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "abc"
                 byLabel "Password" "www"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "You are logged in as abc"
@@ -216,7 +223,7 @@ newAccountSpecs =
                 byLabel "Password" "hunter2"
                 byLabel "Confirm" "hunter2"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Invalid username" -- Issue #2: a valid username was not checked on creation
