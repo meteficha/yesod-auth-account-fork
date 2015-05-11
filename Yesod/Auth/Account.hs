@@ -119,9 +119,11 @@ import Data.Char (isAlphaNum)
 import Data.Maybe
 import Data.Monoid ((<>))
 import Data.Proxy (Proxy(..))
+import Network.HTTP.Types (unauthorized401)
 import System.IO.Unsafe (unsafePerformIO)
 import qualified Crypto.PasswordStore as PS
 import qualified Crypto.Nonce as Nonce
+import qualified Data.Aeson as A
 import qualified Data.ByteString as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -326,31 +328,25 @@ loginWidget tm = do
         <a href="@{tm resetPasswordR}">_{MsgForgotPassword}
 |]
 
-postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) Html
+postLoginR :: YesodAuthAccount db master => HandlerT Auth (HandlerT master IO) TypedContent
 postLoginR = do
-    mr <- lift getMessageRender
     ((result, _), _) <- lift $ runFormPostNoToken $ renderDivs loginForm
     muser <- case result of
                 FormMissing -> invalidArgs ["Form is missing"]
-                FormFailure msg -> return $ Left msg
+                FormFailure _ -> return $ Left Msg.InvalidLogin
                 FormSuccess (LoginData uname pwd) -> do
                     mu <- lift $ runAccountDB $ loadUser uname
                     case mu of
-                        Nothing -> return $ Left [mr Msg.InvalidUsernamePass]
+                        Nothing -> return $ Left Msg.InvalidUsernamePass
                         Just u -> return $
                             if verifyPassword pwd (userPasswordHash u)
                                 then Right u
-                                else Left [mr Msg.InvalidUsernamePass]
+                                else Left Msg.InvalidUsernamePass
 
     case muser of
-        Left errs -> do
-            setMessage $ toHtml $ T.concat errs
-            redirect LoginR
-
+        Left err -> loginErrorMessageI LoginR err
         Right u -> if userEmailVerified u
-                        then do lift $ setCreds True $ Creds "account" (username u) []
-                                -- setCreds should redirect so we will never get here
-                                badMethod
+                        then lift $ setCredsRedirect $ Creds "account" (username u) []
                         else unregisteredLogin u
 
 ---------------------------------------------------------------------------------------------------
@@ -886,18 +882,30 @@ class (YesodAuth master
         Right _ -> validUser
     -- | What to do when the user logs in and the email has not yet been verified.
     --
-    -- By default, this displays a message and contains 'resendVerifyEmailForm', allowing
-    -- the user to resend the verification email.  The handler is run inside the post
-    -- handler for login, so you can call 'setCreds' to preform a successful login.
-    unregisteredLogin :: UserAccount db -> HandlerT Auth (HandlerT master IO) Html
-    unregisteredLogin u = do
-        tm <- getRouteToParent
-        lift $ defaultLayout $ do
-            setTitleI MsgEmailUnverified
-            [whamlet|
-<p>_{MsgEmailUnverified}
-^{resendVerifyEmailWidget (username u) tm}
-|]
+    -- By default, supports both HTML and JSON responses.
+    --
+    --   * HTML: Displays a message and contains 'resendVerifyEmailForm', allowing
+    --     the user to resend the verification email.  The handler is run inside the post
+    --     handler for login, so you can call 'setCreds' to preform a successful login.
+    --
+    --   * JSON: Returns @{ unverified: true }@ and status code 401.
+    unregisteredLogin :: UserAccount db -> HandlerT Auth (HandlerT master IO) TypedContent
+    unregisteredLogin u =
+        selectRep $ do
+            provideRep $ do
+                tm <- getRouteToParent
+                lift $ defaultLayout $ do
+                    setTitleI MsgEmailUnverified
+                    [whamlet|
+                      <p>_{MsgEmailUnverified}
+                      ^{resendVerifyEmailWidget (username u) tm}
+                    |]
+            provideRep $ do
+                let obj = A.object ["unverified" A..= True, "message" A..= msg]
+                    msg = "User account has not been verified (check your e-mail)" :: T.Text
+                void $ sendResponseStatus unauthorized401 obj
+                return obj
+
 
     -- | The new account page.
     --
