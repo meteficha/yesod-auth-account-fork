@@ -41,7 +41,7 @@ source-repository head
     location: https://github.com/meteficha/yesod-auth-account-fork.git
 
 library
-    hs-source-dirs:  .
+    hs-source-dirs:  src
     exposed-modules: Yesod.Auth.Account, Yesod.Auth.Account.Message
     ghc-options:   -Wall
 
