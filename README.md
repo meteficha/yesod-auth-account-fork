@@ -6,7 +6,7 @@ The plugin provides default pages implementing all of this functionality, but it
 to allow all the pages (new account page, password reset, etc.) to be customized or for the forms to
 be embedded into your own pages allowing you to just ignore the routes inside the plugin.  The
 details are contained in the [haddock
-documentation](http://hackage.haskell.org/package/yesod-auth-account).
+documentation](http://hackage.haskell.org/package/yesod-auth-account-fork).
 
 The plugin supports any form data storage by requiring you to implement a couple of interfaces for
 data access.  The plugin has instances of these interfaces using persistent, but you can create your
@@ -14,5 +14,17 @@ own implementation if you are not using persistent or want more control over use
 storage.
 
 A complete working example using persistent is
-[example.hs](/wuzzeb/yesod-auth-account/src/tip/example.hs).  Also, see the
-[haddock documentation](http://hackage.haskell.org/package/yesod-auth-account).
+`example.hs`.  Also, see the
+[haddock documentation](http://hackage.haskell.org/package/yesod-auth-account-fork).
+
+# Fork
+
+This is a fork of the @yesod-auth-account@ package with the
+following additions:
+
+  * Login using either username or e-mail.
+
+  * JSON support for single page applications.
+
+We'd like to merge these changes back upstream but its
+maintainer has been unresponsive.

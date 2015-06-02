@@ -1,3 +1,12 @@
+# Fork: 1.0
+
+* Changed into an official fork after being an unofficial one for
+  a long time.  An e-mail was sent about this fork to John Lenz
+  on 2015-05-08, but as of 2015-06-01 no reply has been received.
+
+* Moved to a Git repo on GitHub.
+
+
 # 1.4.0
 
 * Add proper support for i18n:

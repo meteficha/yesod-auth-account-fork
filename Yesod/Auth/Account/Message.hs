@@ -28,7 +28,7 @@ module Yesod.Auth.Account.Message(
 
 import qualified Data.Text as T
 
--- | Messages specific to yesod-auth-account.  We also use messages from "Yesod.Auth.Message".
+-- | Messages specific to yesod-auth-account-fork.  We also use messages from "Yesod.Auth.Message".
 data AccountMsg = MsgUsername
                 | MsgLoginName
                 | MsgForgotPassword
