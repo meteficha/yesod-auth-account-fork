@@ -19,7 +19,7 @@ A complete working example using persistent is
 
 # Fork
 
-This is a fork of the @yesod-auth-account@ package with the
+This is a fork of the `yesod-auth-account` package with the
 following additions:
 
   * Login using either username or e-mail.
