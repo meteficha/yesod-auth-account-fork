@@ -1,5 +1,5 @@
 name:              yesod-auth-account-fork
-version:           2.0.1
+version:           2.0.2
 cabal-version:     >= 1.8
 build-type:        Simple
 synopsis:          An account authentication plugin for Yesod
