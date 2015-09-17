@@ -145,7 +145,7 @@ newAccountSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "test@example.com"
                 byLabel "Password" "xxx"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             bodyContains "You are logged in as abc"
 

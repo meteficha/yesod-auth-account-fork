@@ -6,6 +6,13 @@ import Yesod.Test
 import Foundation
 import qualified Data.Text as T
 
+redirectCode :: Int
+#if MIN_VERSION_yesod_test(1,4,0)
+redirectCode = 303
+#else
+redirectCode = 302
+#endif
+
 -- In 9f379bc219bd1fdf008e2c179b03e98a05b36401 (which went into yesod-form-1.3.9)
 -- the numbering of fields was changed.  We normally wouldn't care because fields
 -- can be set via 'byLabel', but hidden fields have no label so we must use the id
@@ -31,7 +38,7 @@ changePasswordLoggedSpecs =
                 byLabel "Password" "xxx"
                 byLabel "Confirm" "xxx"
 
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "A confirmation e-mail has been sent to tst@example.com"
@@ -52,7 +59,7 @@ changePasswordLoggedSpecs =
             post'"/auth/page/account/resendverifyemail" $ do
                 addNonce
                 addPostParam f1 "aaa" -- username is also a hidden field
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             bodyContains "A confirmation e-mail has been sent to tst@example.com"
 
@@ -63,13 +70,13 @@ changePasswordLoggedSpecs =
 
             -- verify email
             get' verify'
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "You are logged in as aaa"
 
             post $ AuthR LogoutR
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Please visit the <a href=\"/auth/login\">Login page"
@@ -79,7 +86,7 @@ changePasswordLoggedSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "aaa"
                 byLabel "Password" "xxx"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             bodyContains "You are logged in as aaa"
 
@@ -92,7 +99,7 @@ changePasswordLoggedSpecs =
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
                 addPostParam f1 "aaa"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "Password updated"
@@ -105,7 +112,7 @@ changePasswordLoggedSpecs =
             post'"/auth/page/account/login" $ do
                 byLabel "Username" "aaa"
                 byLabel "Password" "www"
-            statusIs 302
+            statusIs redirectCode
             get' "/"
             statusIs 200
             bodyContains "You are logged in as aaa"
@@ -117,5 +124,3 @@ changePasswordLoggedSpecs =
         yit "cannot change password while logged out" $ do
             get' "/auth/page/account/newpasswordlgd"
             statusIs 403
-
-
