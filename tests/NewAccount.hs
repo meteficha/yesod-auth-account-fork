@@ -37,7 +37,7 @@ newAccountSpecs =
             bodyContains "Register"
 
             post'"/auth/page/account/newaccount" $ do
-                addNonce
+                addToken
                 byLabel "Username" "abc"
                 byLabel "Email" "test@example.com"
                 byLabel "Password" "xxx"
@@ -53,7 +53,7 @@ newAccountSpecs =
             statusIs 200
 
             post'"/auth/page/account/newaccount" $ do
-                addNonce
+                addToken
                 byLabel "Username" "abc"
                 byLabel "Email" "test@example.com"
                 byLabel "Password" "xxx"
@@ -104,7 +104,7 @@ newAccountSpecs =
 
             -- resend verify email
             post'"/auth/page/account/resendverifyemail" $ do
-                addNonce
+                addToken
                 addPostParam f1 "abc" -- username is also a hidden field
             statusIs redirectCode
             get' "/"
@@ -159,7 +159,7 @@ newAccountSpecs =
             bodyContains "Send password reset email"
             post'"/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
-                addNonce
+                addToken
             statusIs redirectCode
             get' "/"
             statusIs 200
@@ -173,7 +173,7 @@ newAccountSpecs =
             get' newpwd
             statusIs 200
             post'"/auth/page/account/setpassword" $ do
-                addNonce
+                addToken
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
                 addPostParam f1 "abc"
@@ -186,7 +186,7 @@ newAccountSpecs =
             statusIs 200
             matches <- htmlQuery $ "input[name=" <> f2 <> "][type=hidden][value]"
             post'"/auth/page/account/setpassword" $ do
-                addNonce
+                addToken
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
                 addPostParam f1 "abc"
@@ -217,7 +217,7 @@ newAccountSpecs =
             statusIs 200
 
             post' "/auth/page/account/newaccount" $ do
-                addNonce
+                addToken
                 byLabel "Username" "x.y"
                 byLabel "Email" "xy@example.com"
                 byLabel "Password" "hunter2"

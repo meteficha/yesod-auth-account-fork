@@ -45,7 +45,7 @@ basicSpecs =
 
             post' "/auth/page/account/resetpassword" $ do
                 byLabel "Username" "abc"
-                addNonce
+                addToken
 
             statusIs redirectCode
             get' "/"
@@ -86,4 +86,3 @@ basicSpecs =
 
             statusIs 400
             bodyContains "As a protection against cross-site"
-  

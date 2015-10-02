@@ -32,7 +32,7 @@ changePasswordLoggedSpecs =
             statusIs 200
 
             post'"/auth/page/account/newaccount" $ do
-                addNonce
+                addToken
                 byLabel "Username" "aaa"
                 byLabel "Email" "tst@example.com"
                 byLabel "Password" "xxx"
@@ -57,7 +57,7 @@ changePasswordLoggedSpecs =
 
             -- resend verify email
             post'"/auth/page/account/resendverifyemail" $ do
-                addNonce
+                addToken
                 addPostParam f1 "aaa" -- username is also a hidden field
             statusIs redirectCode
             get' "/"
@@ -94,7 +94,7 @@ changePasswordLoggedSpecs =
             -- good key
             get' "/auth/page/account/newpasswordlgd"
             post'"/auth/page/account/setpassword" $ do
-                addNonce
+                addToken
                 byLabel "Please fill in your current password" "xxx"
                 byLabel "New password" "www"
                 byLabel "Confirm" "www"
