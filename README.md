@@ -17,6 +17,8 @@ A complete working example using persistent is
 `example.hs`.  Also, see the
 [haddock documentation](http://hackage.haskell.org/package/yesod-auth-account-fork).
 
+If you use `stack`, you can run the example like this: `stack example.hs`.
+
 # Fork
 
 This is a fork of the `yesod-auth-account` package with the
