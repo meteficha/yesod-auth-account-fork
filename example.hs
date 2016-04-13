@@ -1,3 +1,13 @@
+#!/usr/bin/env stack
+{- stack
+     --resolver lts
+     --install-ghc
+     runghc
+     --package yesod
+     --package persistent-sqlite
+     --package yesod-auth-account-fork
+-}
+
 {-# LANGUAGE QuasiQuotes, TypeFamilies, GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts, FlexibleInstances, TemplateHaskell, OverloadedStrings #-}
 {-# LANGUAGE GADTs, MultiParamTypeClasses, TypeSynonymInstances #-}
@@ -16,6 +26,7 @@ User
     UniqueUsername username
     password ByteString
     emailAddress Text
+    UniqueEmailAddress emailAddress
     verified Bool
     verifyKey Text
     resetPasswordKey Text
@@ -30,6 +41,7 @@ instance PersistUserCredentials User where
     userEmailVerifyKeyF = UserVerifyKey
     userResetPwdKeyF = UserResetPasswordKey
     uniqueUsername = UniqueUsername
+    uniqueEmailaddress = UniqueEmailAddress
 
     userCreate name email key pwd = User name pwd email False key ""
 
@@ -65,6 +77,7 @@ instance AccountSendEmail MyApp
 
 instance YesodAuthAccount (AccountPersistDB MyApp User) MyApp where
     runAccountDB = runAccountPersistDB
+    getTextId _ = return
 
 getHomeR :: Handler Html
 getHomeR = do
